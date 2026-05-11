@@ -13,6 +13,7 @@
         Upload your <strong>CONTENT</strong> sheet, pick a language, and compare Excel copy to the
         live hotel page (Playwright).
       </p>
+      <p id="app-origin-hint" class="hint"></p>
     </header>
 
     <main class="panel">
@@ -23,16 +24,22 @@
         </div>
 
         <div class="field">
-          <label>Language</label>
-          <div class="lang-buttons" role="group" aria-label="Language">
+          <label>Site language (LHW locale)</label>
+          <div class="lang-buttons" role="group" aria-label="LHW site language">
             <button type="button" class="lang-btn" data-lang="ENG">ENG</button>
             <button type="button" class="lang-btn" data-lang="GER">GER</button>
             <button type="button" class="lang-btn" data-lang="ITA">ITA</button>
             <button type="button" class="lang-btn" data-lang="FRE">FRE</button>
             <button type="button" class="lang-btn" data-lang="JAP">JAP</button>
-            <button type="button" class="lang-btn" data-lang="SPA">SPA</button>
+            <button type="button" class="lang-btn" data-lang="SPA" title="Spanish — opens es.lhw.com (not hotel spa)">
+              ESP
+            </button>
           </div>
           <input type="hidden" name="language" id="language" value="ENG" />
+          <p class="hint">
+            <strong>ESP</strong> = Spanish website (code <code>SPA</code> in your Excel column). For <strong>hotel spa</strong> copy,
+            use a section label like “Spa” / “Wellness” in column A — that loads <code>…/services-amenities/spa</code>.
+          </p>
         </div>
 
         <div class="field">
@@ -45,7 +52,16 @@
           />
           <p class="hint">
             Leave empty to use the server default URL. When you paste a link, language buttons only swap the host
-            (<code>www</code>, <code>de</code>, <code>jp</code>, …) and keep path + query.
+            (<code>www</code>, <code>de</code>, <code>jp</code>, …) and keep path + query.             If your Excel has dining or spa
+            rows (column A mentions restaurant/dining/spa/wellness, etc.) with text in any language column, the tool opens
+            <code>…/services-amenities/dining</code> and/or <code>…/services-amenities/spa</code> to compare that copy.
+            Labels containing <strong>Property Highlight</strong> (e.g. “Property Highlight #2 Description”) are matched to
+            highlight paragraphs on the <strong>hotel overview</strong> (including <code>.col-md-6 p</code> blurbs).
+            Labels containing <strong>Property search</strong> open the LHW homepage, search using the hotel name from your
+            pasted <code>/hotel/…</code> (or <code>/property-search/…</code>) URL, then read <code>p.hotel-desc</code> on the results page.
+            If dining/spa previews look empty or wrong, start the server from PowerShell with
+            <code>$env:HEADLESS=&quot;false&quot;; npm start</code> and/or
+            <code>$env:PW_CHANNEL=&quot;chrome&quot;; npm start</code> (uses installed Chrome instead of bundled Chromium).
           </p>
         </div>
 
@@ -55,6 +71,24 @@
         </div>
       </form>
     </main>
+
+    <section class="panel" id="dining-source-section" hidden>
+      <h2>Dining page source</h2>
+      <p class="hint" id="dining-source-intro"></p>
+      <pre id="dining-source-preview" class="service-preview" aria-label="Dining page text preview"></pre>
+    </section>
+
+    <section class="panel" id="spa-source-section" hidden>
+      <h2>Spa page source</h2>
+      <p class="hint" id="spa-source-intro"></p>
+      <pre id="spa-source-preview" class="service-preview" aria-label="Spa page text preview"></pre>
+    </section>
+
+    <section class="panel" id="property-search-section" hidden>
+      <h2>Property search result</h2>
+      <p class="hint" id="property-search-intro"></p>
+      <pre id="property-search-preview" class="service-preview" aria-label="Property search hotel description preview"></pre>
+    </section>
 
     <section class="panel">
       <h2>Results</h2>

@@ -83,7 +83,7 @@ app.post('/api/run', upload.single('file'), async (req, res) => {
 
     const headless = String(process.env.HEADLESS || 'true').toLowerCase() !== 'false';
 
-    const results = await runComparison({
+    const { results, diningMeta, spaMeta, propertySearchMeta } = await runComparison({
       excelPath: req.file.path,
       languageCode: language,
       pageUrl,
@@ -93,7 +93,7 @@ app.post('/api/run', upload.single('file'), async (req, res) => {
     // Clean up uploaded file after run (keep disk tidy)
     fs.promises.unlink(req.file.path).catch(() => {});
 
-    res.json({ results, pageUrl, language });
+    res.json({ results, diningMeta, spaMeta, propertySearchMeta, pageUrl, language });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     res.status(500).json({ error: message });

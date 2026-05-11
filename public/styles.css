@@ -30,6 +30,22 @@ body {
   box-shadow: 0 8px 24px rgba(15, 23, 42, 0.06);
 }
 
+.service-preview,
+.dining-preview {
+  margin: 0.75rem 0 0;
+  padding: 1rem;
+  max-height: 22rem;
+  overflow: auto;
+  font-size: 0.85rem;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  word-break: break-word;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  color: #334155;
+}
+
 .field {
   margin-bottom: 1rem;
 }
@@ -132,6 +148,14 @@ td {
 th {
   background: #f8fafc;
   text-align: left;
+}
+
+#results-table td:nth-child(3),
+#results-table td:nth-child(4) {
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-width: 36rem;
+  min-width: 10rem;
 }
 
 .pass {
