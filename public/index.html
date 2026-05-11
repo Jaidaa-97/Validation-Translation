@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>LHW translation check</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <header class="hero">
+      <h1>LHW translation validator</h1>
+      <p>
+        Upload your <strong>CONTENT</strong> sheet, pick a language, and compare Excel copy to the
+        live hotel page (Playwright).
+      </p>
+    </header>
+
+    <main class="panel">
+      <form id="run-form">
+        <div class="field">
+          <label for="file">Excel file (.xlsx)</label>
+          <input id="file" name="file" type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" required />
+        </div>
+
+        <div class="field">
+          <label>Language</label>
+          <div class="lang-buttons" role="group" aria-label="Language">
+            <button type="button" class="lang-btn" data-lang="ENG">ENG</button>
+            <button type="button" class="lang-btn" data-lang="GER">GER</button>
+            <button type="button" class="lang-btn" data-lang="ITA">ITA</button>
+            <button type="button" class="lang-btn" data-lang="FRE">FRE</button>
+            <button type="button" class="lang-btn" data-lang="JAP">JAP</button>
+            <button type="button" class="lang-btn" data-lang="SPA">SPA</button>
+          </div>
+          <input type="hidden" name="language" id="language" value="ENG" />
+        </div>
+
+        <div class="field">
+          <label for="pageUrl">Hotel page URL (optional)</label>
+          <input
+            id="pageUrl"
+            name="pageUrl"
+            type="url"
+            placeholder="Paste a full lhw.com hotel link, or leave empty for server default"
+          />
+          <p class="hint">
+            Leave empty to use the server default URL. When you paste a link, language buttons only swap the host
+            (<code>www</code>, <code>de</code>, <code>jp</code>, …) and keep path + query.
+          </p>
+        </div>
+
+        <div class="actions">
+          <button type="submit" id="run-btn" class="primary">Run / Compare</button>
+          <span id="status" class="status" aria-live="polite"></span>
+        </div>
+      </form>
+    </main>
+
+    <section class="panel">
+      <h2>Results</h2>
+      <div class="table-wrap">
+        <table id="results-table">
+          <thead>
+            <tr>
+              <th>Section / Label</th>
+              <th>Language</th>
+              <th>Expected (Excel)</th>
+              <th>Actual (site)</th>
+              <th>Status</th>
+              <th>Note</th>
+            </tr>
+          </thead>
+          <tbody id="results-body">
+            <tr class="placeholder">
+              <td colspan="6">Run a comparison to see results.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <script src="/app.js"></script>
+  </body>
+</html>

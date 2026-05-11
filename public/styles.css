@@ -1,0 +1,159 @@
+:root {
+  font-family: system-ui, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+  color: #14213d;
+  background: #f8f9fc;
+  line-height: 1.5;
+}
+
+body {
+  margin: 0;
+  padding: 0 1.25rem 2rem;
+  max-width: 1200px;
+  margin-inline: auto;
+}
+
+.hero {
+  padding: 2rem 0 1rem;
+}
+
+.hero h1 {
+  margin: 0 0 0.5rem;
+  font-size: 1.75rem;
+}
+
+.panel {
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  padding: 1.25rem 1.5rem;
+  margin-bottom: 1.25rem;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.06);
+}
+
+.field {
+  margin-bottom: 1rem;
+}
+
+.field label {
+  display: block;
+  font-weight: 600;
+  margin-bottom: 0.35rem;
+}
+
+.hint {
+  margin: 0.4rem 0 0;
+  font-size: 0.88rem;
+  color: #64748b;
+}
+
+.hint code {
+  font-size: 0.9em;
+  background: #f1f5f9;
+  padding: 0.1rem 0.35rem;
+  border-radius: 4px;
+}
+
+input[type='file'],
+input[type='url'] {
+  width: 100%;
+  max-width: 640px;
+  padding: 0.5rem 0.6rem;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.lang-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.lang-btn {
+  border: 1px solid #cbd5e1;
+  background: #f1f5f9;
+  padding: 0.45rem 0.85rem;
+  border-radius: 999px;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.lang-btn.active {
+  background: #2563eb;
+  color: #fff;
+  border-color: #1d4ed8;
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin-top: 1rem;
+}
+
+.primary {
+  background: #0f766e;
+  color: #fff;
+  border: none;
+  padding: 0.65rem 1.25rem;
+  border-radius: 8px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.primary:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.status {
+  color: #475569;
+  font-size: 0.95rem;
+}
+
+.table-wrap {
+  overflow: auto;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.92rem;
+}
+
+th,
+td {
+  border: 1px solid #e2e8f0;
+  padding: 0.55rem 0.6rem;
+  vertical-align: top;
+}
+
+th {
+  background: #f8fafc;
+  text-align: left;
+}
+
+.pass {
+  color: #047857;
+  font-weight: 700;
+}
+
+.fail {
+  color: #b91c1c;
+  font-weight: 700;
+}
+
+.warn {
+  color: #b45309;
+  font-weight: 700;
+}
+
+.muted {
+  color: #64748b;
+}
+
+.placeholder td {
+  text-align: center;
+  color: #64748b;
+}

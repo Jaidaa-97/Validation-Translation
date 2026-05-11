@@ -1,0 +1,5 @@
+node_modules/
+uploads/
+*.xlsx
+.DS_Store
+.env
