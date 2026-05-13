@@ -8,6 +8,7 @@
 const path = require('path');
 const fs = require('fs');
 const http = require('http');
+const { exec } = require('child_process');
 const express = require('express');
 const multer = require('multer');
 const { runComparison } = require('./lib/playwrightRunner');
@@ -19,6 +20,12 @@ const DEFAULT_LHW_URL =
   'https://www.lhw.com/hotel/Kahala-Yokohama-Japan?rooms=1&numadult1=2&numchild1=0';
 
 const app = express();
+
+const PREFERRED_PORT = Number(process.env.PORT) || 3000;
+const MAX_PORT_TRIES = 15;
+
+/** Actual TCP port the UI is served on (updated when `server.listen` fires). */
+let boundListenPort = PREFERRED_PORT;
 
 const uploadsDir = path.join(__dirname, 'uploads');
 if (!fs.existsSync(uploadsDir)) {
@@ -47,13 +54,29 @@ const upload = multer({
   },
 });
 
-app.use(express.static(path.join(__dirname, 'public')));
+app.use(
+  express.static(path.join(__dirname, 'public'), {
+    // Dev-only: tell the browser never to cache the UI files so changes to
+    // public/* are picked up the moment you reload the page.
+    setHeaders: (res) => {
+      res.setHeader('Cache-Control', 'no-store, max-age=0');
+    },
+    etag: false,
+    lastModified: false,
+  }),
+);
 
 /**
  * Health check
  */
 app.get('/api/health', (_req, res) => {
-  res.json({ ok: true, defaultUrl: DEFAULT_LHW_URL, languageHosts: LANGUAGE_HOSTS });
+  res.json({
+    ok: true,
+    listenPort: boundListenPort,
+    listenUrl: `http://localhost:${boundListenPort}`,
+    defaultUrl: DEFAULT_LHW_URL,
+    languageHosts: LANGUAGE_HOSTS,
+  });
 });
 
 /**
@@ -83,7 +106,15 @@ app.post('/api/run', upload.single('file'), async (req, res) => {
 
     const headless = String(process.env.HEADLESS || 'true').toLowerCase() !== 'false';
 
-    const { results, diningMeta, spaMeta, propertySearchMeta } = await runComparison({
+    const {
+      results,
+      diningMeta,
+      spaMeta,
+      propertySearchMeta,
+      propertyOverviewSpecialMeta,
+      propertyHighlightMeta,
+      hotelName,
+    } = await runComparison({
       excelPath: req.file.path,
       languageCode: language,
       pageUrl,
@@ -93,7 +124,17 @@ app.post('/api/run', upload.single('file'), async (req, res) => {
     // Clean up uploaded file after run (keep disk tidy)
     fs.promises.unlink(req.file.path).catch(() => {});
 
-    res.json({ results, diningMeta, spaMeta, propertySearchMeta, pageUrl, language });
+    res.json({
+      results,
+      diningMeta,
+      spaMeta,
+      propertySearchMeta,
+      propertyOverviewSpecialMeta,
+      propertyHighlightMeta,
+      pageUrl,
+      language,
+      hotelName,
+    });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     res.status(500).json({ error: message });
@@ -107,22 +148,31 @@ app.use((err, _req, res, _next) => {
   res.status(400).json({ error: message });
 });
 
-const PREFERRED_PORT = Number(process.env.PORT) || 3000;
-const MAX_PORT_TRIES = 15;
-
-/**
- * Bind the first free port starting at PREFERRED_PORT (handles EADDRINUSE when 3000 is already taken).
- * @param {number} port
- * @param {number} triesLeft
- */
 function listenWithFallback(port, triesLeft) {
   const server = http.createServer(app);
   server.listen(port, () => {
+    boundListenPort = port;
+    const origin = `http://localhost:${port}`;
     // eslint-disable-next-line no-console
-    console.log(`LHW translation validator running at http://localhost:${port}`);
+    console.log('');
+    // eslint-disable-next-line no-console
+    console.log('================================================================');
+    // eslint-disable-next-line no-console
+    console.log('  LHW translation validator — open THIS address in your browser:');
+    // eslint-disable-next-line no-console
+    console.log(`  ${origin}`);
+    // eslint-disable-next-line no-console
+    console.log('================================================================');
+    // eslint-disable-next-line no-console
+    console.log(`(If Run / Compare fails, confirm the browser URL matches the line above. Port ${PREFERRED_PORT} is often busy if several terminals ran npm start.)`);
+    // eslint-disable-next-line no-console
     console.log(`Default hotel URL: ${DEFAULT_LHW_URL}`);
-    if (port !== PREFERRED_PORT) {
-      console.log(`(Port ${PREFERRED_PORT} was busy — open the URL above.)`);
+
+    if (
+      process.platform === 'win32' &&
+      String(process.env.OPEN_BROWSER || '').toLowerCase() === 'true'
+    ) {
+      exec(`start "" "${origin}"`, { windowsHide: true }, () => {});
     }
   });
 

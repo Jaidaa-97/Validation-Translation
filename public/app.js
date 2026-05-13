@@ -35,6 +35,12 @@ const spaPreviewEl = document.getElementById('spa-source-preview');
 const propertySearchSection = document.getElementById('property-search-section');
 const propertySearchIntro = document.getElementById('property-search-intro');
 const propertySearchPreviewEl = document.getElementById('property-search-preview');
+const propertyOverviewSpecialSection = document.getElementById('property-overview-special-section');
+const propertyOverviewSpecialIntro = document.getElementById('property-overview-special-intro');
+const propertyOverviewSpecialPreviewEl = document.getElementById('property-overview-special-preview');
+const propertyHighlightSection = document.getElementById('property-highlight-section');
+const propertyHighlightIntro = document.getElementById('property-highlight-intro');
+const propertyHighlightPreviewEl = document.getElementById('property-highlight-preview');
 
 /**
  * Keep path + query; only swap the hostname to match the selected language (www, de, it, …).
@@ -89,18 +95,22 @@ async function loadDefaultUrlHint() {
       // Hint only — input stays empty until the user pastes a link (server uses default if still empty).
       pageUrlInput.placeholder = data.defaultUrl;
     }
+    if (appOriginHint && data.listenUrl && typeof window !== 'undefined' && window.location?.origin) {
+      const same = window.location.origin === data.listenUrl;
+      appOriginHint.textContent = same
+        ? `Connected to this server at ${data.listenUrl} (port ${data.listenPort ?? ''}).`
+        : `Server reports ${data.listenUrl} — open that URL if this tab (${window.location.origin}) does not match your terminal.`;
+    } else if (appOriginHint && typeof window !== 'undefined' && window.location?.origin) {
+      appOriginHint.textContent = `This app: ${window.location.origin}`;
+    }
   } catch {
     pageUrlInput.placeholder = DEFAULT_PAGE_URL;
     serverDefaultUrl = DEFAULT_PAGE_URL;
   }
 }
 
-loadDefaultUrlHint();
-
 const appOriginHint = document.getElementById('app-origin-hint');
-if (appOriginHint && typeof window !== 'undefined' && window.location?.origin) {
-  appOriginHint.textContent = `Use this address in your browser (port matters if 3000 is busy): ${window.location.origin}`;
-}
+loadDefaultUrlHint();
 
 function statusClassForRow(status) {
   const s = String(status || '').toLowerCase();
@@ -114,7 +124,7 @@ function renderResults(rows) {
   if (!rows || !rows.length) {
     const tr = document.createElement('tr');
     tr.className = 'placeholder';
-    tr.innerHTML = '<td colspan="6">No rows returned.</td>';
+    tr.innerHTML = '<td colspan="7">No rows returned.</td>';
     resultsBody.appendChild(tr);
     return;
   }
@@ -123,6 +133,7 @@ function renderResults(rows) {
     const tr = document.createElement('tr');
     const st = r.status || '';
     tr.innerHTML = `
+      <td>${escapeHtml(r.hotelName || '')}</td>
       <td>${escapeHtml(r.section || '')}</td>
       <td>${escapeHtml(r.language || '')}</td>
       <td>${escapeHtml(r.expectedText || '')}</td>
@@ -171,7 +182,7 @@ function renderSpaMeta(sm) {
   if (!spaSection || !spaIntro || !spaPreviewEl) {
     return;
   }
-  if (!sm || !sm.url) {
+  if (!sm || !sm.active) {
     spaSection.hidden = true;
     spaPreviewEl.textContent = '';
     return;
@@ -182,11 +193,45 @@ function renderSpaMeta(sm) {
     ? 'Opened the hotel overview first, then loaded the spa subpage.'
     : 'Loaded the spa subpage after the overview URL.';
   const count = typeof sm.characterCount === 'number' ? sm.characterCount : 0;
-  const status = sm.fetchedText
-    ? `Captured ${count} character(s) from the page.`
-    : 'No body text was captured. Try HEADLESS=false in the terminal before npm start, or confirm …/services-amenities/spa exists for this hotel.';
-  spaIntro.innerHTML = `${escapeHtml(String(sm.url))}<br /><span class="hint">${escapeHtml(opened)} ${escapeHtml(status)}</span>`;
-  spaPreviewEl.textContent = sm.fetchedText && sm.preview ? String(sm.preview) : '(empty preview)';
+  const titleFound = Boolean(sm.titleFound);
+  const descFound = Boolean(sm.descriptionFound);
+  const statusParts = [];
+  statusParts.push(titleFound ? 'SPA title: found.' : 'SPA title: not found.');
+  statusParts.push(descFound ? 'SPA description: found.' : 'SPA description: not found.');
+  if (sm.fetchedText) {
+    statusParts.push(`Combined compare text: ${count} character(s).`);
+  }
+  const status = statusParts.join(' ');
+
+  const urlLine = sm.url
+    ? escapeHtml(String(sm.url))
+    : '<span class="hint">Spa URL could not be built from your link — paste a full <code>https://www.lhw.com/hotel/…</code> URL (path must start with <code>/hotel/</code>).</span>';
+  spaIntro.innerHTML = `${urlLine}<br /><span class="hint">${escapeHtml(opened)} ${escapeHtml(status)}</span>`;
+
+  let previewBody = '(empty preview)';
+  if (sm.preview && String(sm.preview).trim()) {
+    previewBody = String(sm.preview);
+  } else if (titleFound || descFound) {
+    const sel = String(sm.titleSelector || '#spa-list-title');
+    const lines = [];
+    lines.push(`SPA title (${sel}):`);
+    lines.push(sm.title && String(sm.title).trim() ? String(sm.title) : '(not found)');
+    lines.push('');
+    lines.push('SPA description (.spa-details / fallbacks):');
+    if (sm.descriptionPreview && String(sm.descriptionPreview).trim()) {
+      lines.push(String(sm.descriptionPreview));
+    } else {
+      lines.push('(not found)');
+    }
+    if (typeof sm.descriptionLength === 'number' && sm.descriptionLength > 0) {
+      lines.push('');
+      lines.push(`(Description length on page before preview trim: ${sm.descriptionLength} characters)`);
+    }
+    previewBody = lines.join('\n');
+  } else if (sm.fetchedText && count > 0) {
+    previewBody = `(${count} character(s) captured; structured title/description unavailable — check the Results table “Actual” column for spa rows.)`;
+  }
+  spaPreviewEl.textContent = previewBody;
 }
 
 /** @param {Record<string, unknown> | null | undefined} pm */
@@ -209,6 +254,56 @@ function renderPropertySearchMeta(pm) {
   const urlLine = pm.url ? String(pm.url) : '(no result URL)';
   propertySearchIntro.innerHTML = `${escapeHtml(q)}<br />${escapeHtml(urlLine)}<br /><span class="hint">${escapeHtml(status)}</span>`;
   propertySearchPreviewEl.textContent = pm.fetchedText && pm.preview ? String(pm.preview) : '(empty preview)';
+}
+
+/** @param {Record<string, unknown> | null | undefined} om */
+function renderPropertyOverviewSpecialMeta(om) {
+  if (!propertyOverviewSpecialSection || !propertyOverviewSpecialIntro || !propertyOverviewSpecialPreviewEl) {
+    return;
+  }
+  if (!om || !om.active) {
+    propertyOverviewSpecialSection.hidden = true;
+    propertyOverviewSpecialPreviewEl.textContent = '';
+    return;
+  }
+
+  propertyOverviewSpecialSection.hidden = false;
+  const count = typeof om.characterCount === 'number' ? om.characterCount : 0;
+  let status = '';
+  if (om.fetchedText) {
+    status = `Captured ${count} character(s) from the property-overview block (Excel column H).`;
+  } else if (om.selectorEmpty) {
+    status =
+      'Column H triggered this read, but the pinned property-overview selectors returned no text. Compare stays on main page text for non–special-note rows; special-note rows get an empty “Actual” pool.';
+  } else {
+    status = 'No text captured.';
+  }
+  propertyOverviewSpecialIntro.innerHTML = `<span class="hint">${escapeHtml(status)}</span>`;
+  propertyOverviewSpecialPreviewEl.textContent =
+    om.fetchedText && om.preview ? String(om.preview) : '(empty — see status above)';
+}
+
+/** @param {Record<string, unknown> | null | undefined} hm */
+function renderPropertyHighlightMeta(hm) {
+  if (!propertyHighlightSection || !propertyHighlightIntro || !propertyHighlightPreviewEl) {
+    return;
+  }
+  if (!hm || !hm.active) {
+    propertyHighlightSection.hidden = true;
+    propertyHighlightPreviewEl.textContent = '';
+    return;
+  }
+
+  propertyHighlightSection.hidden = false;
+  const n = typeof hm.segmentCount === 'number' ? hm.segmentCount : 0;
+  const status = hm.fetchedText
+    ? `Captured ${n} highlight paragraph(s) from the overview (#1…#${n} map to Excel “Property Highlight #1 … Description”, etc.).`
+    : 'No highlight paragraphs were captured. The overview may still be loading, or the layout may not use section.property-highlights / .highlight-item — check the terminal log.';
+  propertyHighlightIntro.innerHTML = `<span class="hint">${escapeHtml(status)}</span>`;
+  propertyHighlightPreviewEl.textContent =
+    hm.fetchedText && hm.preview && String(hm.preview).trim()
+      ? String(hm.preview)
+      : '(empty — see status above)';
 }
 
 form.addEventListener('submit', async (e) => {
@@ -235,6 +330,8 @@ form.addEventListener('submit', async (e) => {
     renderDiningMeta(data.diningMeta ?? null);
     renderSpaMeta(data.spaMeta ?? null);
     renderPropertySearchMeta(data.propertySearchMeta ?? null);
+    renderPropertyOverviewSpecialMeta(data.propertyOverviewSpecialMeta ?? null);
+    renderPropertyHighlightMeta(data.propertyHighlightMeta ?? null);
     let statusMsg = `Done — ${data.results.length} row(s). URL used: ${data.pageUrl}`;
     const rows = data.results || [];
     const allSkipped =
@@ -251,8 +348,10 @@ form.addEventListener('submit', async (e) => {
     renderDiningMeta(null);
     renderSpaMeta(null);
     renderPropertySearchMeta(null);
+    renderPropertyOverviewSpecialMeta(null);
     renderResults([
       {
+        hotelName: '',
         section: '(client or server error)',
         language: languageInput.value,
         expectedText: '',

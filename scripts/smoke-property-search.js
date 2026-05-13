@@ -1,0 +1,20 @@
+const r = require('../lib/playwrightRunner');
+const p = require('../lib/propertySearch');
+const t = require('../lib/textNormalize');
+
+console.log('runner exports:        ', Object.keys(r).sort().join(', '));
+console.log('propertySearch exports:', Object.keys(p).sort().join(', '));
+console.log('textNormalize exports: ', Object.keys(t).sort().join(', '));
+console.log('---');
+console.log('isPropertySearchSectionLabel("Property Search") =', r.isPropertySearchSectionLabel('Property Search'));
+console.log('isPropertySearchSectionLabel("Overview")        =', r.isPropertySearchSectionLabel('Overview'));
+console.log('isPropertySearchSectionLabel("property  search")=', r.isPropertySearchSectionLabel('property  search'));
+console.log('---');
+console.log('query from Kahala URL  =', r.derivePropertySearchQueryFromUrl('https://www.lhw.com/hotel/Kahala-Yokohama-Japan?rooms=1'));
+console.log('query from CORI URL    =', r.derivePropertySearchQueryFromUrl('https://de.lhw.com/hotel/CORI-Hornbaek-Hotel-Hornbaek-Denmark?x=1'));
+console.log('query from /property-search/My_Hotel =', r.derivePropertySearchQueryFromUrl('https://www.lhw.com/property-search/My_Hotel+Name'));
+console.log('legacy alias is same fn:', r.deriveHotelSearchQueryFromHotelUrl === r.derivePropertySearchQueryFromUrl);
+console.log('---');
+console.log('SELECTORS.searchInput =', p.SELECTORS.searchInput);
+console.log('SELECTORS.searchSubmit=', p.SELECTORS.searchSubmit);
+console.log('SELECTORS.hotelDesc   =', p.SELECTORS.hotelDesc);

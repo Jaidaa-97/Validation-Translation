@@ -56,9 +56,12 @@
             rows (column A mentions restaurant/dining/spa/wellness, etc.) with text in any language column, the tool opens
             <code>…/services-amenities/dining</code> and/or <code>…/services-amenities/spa</code> to compare that copy.
             Labels containing <strong>Property Highlight</strong> (e.g. “Property Highlight #2 Description”) are matched to
-            highlight paragraphs on the <strong>hotel overview</strong> (including <code>.col-md-6 p</code> blurbs).
+            the three highlight tiles on the <strong>hotel overview</strong> (<code>section.property-highlights .highlight-item</code> lead
+            <code>p</code>, with fallbacks). After a run, open <strong>Property highlight copy (overview)</strong> below to verify what was read.
             Labels containing <strong>Property search</strong> open the LHW homepage, search using the hotel name from your
             pasted <code>/hotel/…</code> (or <code>/property-search/…</code>) URL, then read <code>p.hotel-desc</code> on the results page.
+            Put any text in column <strong>H</strong> (special note) on a row to compare that row’s expected language cell against the
+            <code>section.property-overview</code> pinned block (not used for Property Highlight rows — those always use highlight copy).
             If dining/spa previews look empty or wrong, start the server from PowerShell with
             <code>$env:HEADLESS=&quot;false&quot;; npm start</code> and/or
             <code>$env:PW_CHANNEL=&quot;chrome&quot;; npm start</code> (uses installed Chrome instead of bundled Chromium).
@@ -90,12 +93,25 @@
       <pre id="property-search-preview" class="service-preview" aria-label="Property search hotel description preview"></pre>
     </section>
 
+    <section class="panel" id="property-overview-special-section" hidden>
+      <h2>Property overview (column H special note)</h2>
+      <p class="hint" id="property-overview-special-intro"></p>
+      <pre id="property-overview-special-preview" class="service-preview" aria-label="Property overview special block preview"></pre>
+    </section>
+
+    <section class="panel" id="property-highlight-section" hidden>
+      <h2>Property highlight copy (overview)</h2>
+      <p class="hint" id="property-highlight-intro"></p>
+      <pre id="property-highlight-preview" class="service-preview" aria-label="Property highlight paragraphs captured from overview"></pre>
+    </section>
+
     <section class="panel">
       <h2>Results</h2>
       <div class="table-wrap">
         <table id="results-table">
           <thead>
             <tr>
+              <th>Hotel</th>
               <th>Section / Label</th>
               <th>Language</th>
               <th>Expected (Excel)</th>
@@ -106,7 +122,7 @@
           </thead>
           <tbody id="results-body">
             <tr class="placeholder">
-              <td colspan="6">Run a comparison to see results.</td>
+              <td colspan="7">Run a comparison to see results.</td>
             </tr>
           </tbody>
         </table>

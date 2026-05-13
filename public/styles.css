@@ -150,12 +150,13 @@ th {
   text-align: left;
 }
 
-#results-table td:nth-child(3),
-#results-table td:nth-child(4) {
+/* Expected (col 4) and Actual (col 5) — long copy; Language is col 3. */
+#results-table td:nth-child(4),
+#results-table td:nth-child(5) {
   white-space: pre-wrap;
   word-break: break-word;
   max-width: 36rem;
-  min-width: 10rem;
+  min-width: 12rem;
 }
 
 .pass {
