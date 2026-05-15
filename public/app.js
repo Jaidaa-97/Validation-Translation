@@ -26,21 +26,9 @@ const pageUrlInput = document.getElementById('pageUrl');
 const runBtn = document.getElementById('run-btn');
 const statusEl = document.getElementById('status');
 const resultsBody = document.getElementById('results-body');
-const diningSection = document.getElementById('dining-source-section');
-const diningIntro = document.getElementById('dining-source-intro');
-const diningPreviewEl = document.getElementById('dining-source-preview');
-const spaSection = document.getElementById('spa-source-section');
-const spaIntro = document.getElementById('spa-source-intro');
-const spaPreviewEl = document.getElementById('spa-source-preview');
-const propertySearchSection = document.getElementById('property-search-section');
-const propertySearchIntro = document.getElementById('property-search-intro');
-const propertySearchPreviewEl = document.getElementById('property-search-preview');
 const propertyOverviewSpecialSection = document.getElementById('property-overview-special-section');
 const propertyOverviewSpecialIntro = document.getElementById('property-overview-special-intro');
 const propertyOverviewSpecialPreviewEl = document.getElementById('property-overview-special-preview');
-const propertyHighlightSection = document.getElementById('property-highlight-section');
-const propertyHighlightIntro = document.getElementById('property-highlight-intro');
-const propertyHighlightPreviewEl = document.getElementById('property-highlight-preview');
 const messageBannerSection = document.getElementById('message-banner-section');
 const messageBannerIntro = document.getElementById('message-banner-intro');
 const messageBannerPreviewEl = document.getElementById('message-banner-preview');
@@ -160,124 +148,6 @@ function escapeHtml(str) {
     .replace(/'/g, '&#039;');
 }
 
-/** @param {Record<string, unknown> | null | undefined} dm */
-function renderDiningMeta(dm) {
-  if (!diningSection || !diningIntro || !diningPreviewEl) {
-    return;
-  }
-  if (!dm || !dm.url) {
-    diningSection.hidden = true;
-    diningPreviewEl.textContent = '';
-    return;
-  }
-
-  diningSection.hidden = false;
-  const opened = dm.openedOverviewFirst
-    ? 'Opened the hotel overview first, then loaded the dining subpage.'
-    : 'Loaded the dining subpage after the overview URL.';
-  const count = typeof dm.characterCount === 'number' ? dm.characterCount : 0;
-  const hoursPreview =
-    dm.operationHoursPreview && String(dm.operationHoursPreview).trim()
-      ? String(dm.operationHoursPreview)
-      : '';
-  const hoursStatus = hoursPreview
-    ? 'Operation hours: captured from div.hours.'
-    : 'Operation hours: none found on the dining page.';
-  const status = dm.fetchedText
-    ? `Captured ${count} character(s) from the page. ${hoursStatus}`
-    : `No body text was captured. ${hoursStatus} Try: close other tabs using the same hotel run, set environment variable HEADLESS=false, or check the hotel URL slug.`;
-  diningIntro.innerHTML = `${escapeHtml(String(dm.url))}<br /><span class="hint">${escapeHtml(opened)} ${escapeHtml(status)}</span>`;
-  let previewBody = dm.fetchedText && dm.preview ? String(dm.preview) : '(empty preview)';
-  if (hoursPreview) {
-    previewBody = [
-      previewBody,
-      '',
-      '--- Operation hours (div.hours) ---',
-      hoursPreview,
-    ].join('\n');
-  }
-  diningPreviewEl.textContent = previewBody;
-}
-
-/** @param {Record<string, unknown> | null | undefined} sm */
-function renderSpaMeta(sm) {
-  if (!spaSection || !spaIntro || !spaPreviewEl) {
-    return;
-  }
-  if (!sm || !sm.active) {
-    spaSection.hidden = true;
-    spaPreviewEl.textContent = '';
-    return;
-  }
-
-  spaSection.hidden = false;
-  const opened = sm.openedOverviewFirst
-    ? 'Opened the hotel overview first, then loaded the spa subpage.'
-    : 'Loaded the spa subpage after the overview URL.';
-  const count = typeof sm.characterCount === 'number' ? sm.characterCount : 0;
-  const titleFound = Boolean(sm.titleFound);
-  const descFound = Boolean(sm.descriptionFound);
-  const statusParts = [];
-  statusParts.push(titleFound ? 'SPA title: found.' : 'SPA title: not found.');
-  statusParts.push(descFound ? 'SPA description: found.' : 'SPA description: not found.');
-  if (sm.fetchedText) {
-    statusParts.push(`Combined compare text: ${count} character(s).`);
-  }
-  const status = statusParts.join(' ');
-
-  const urlLine = sm.url
-    ? escapeHtml(String(sm.url))
-    : '<span class="hint">Spa URL could not be built from your link — paste a full <code>https://www.lhw.com/hotel/…</code> URL (path must start with <code>/hotel/</code>).</span>';
-  spaIntro.innerHTML = `${urlLine}<br /><span class="hint">${escapeHtml(opened)} ${escapeHtml(status)}</span>`;
-
-  let previewBody = '(empty preview)';
-  if (sm.preview && String(sm.preview).trim()) {
-    previewBody = String(sm.preview);
-  } else if (titleFound || descFound) {
-    const sel = String(sm.titleSelector || '#spa-list-title');
-    const lines = [];
-    lines.push(`SPA title (${sel}):`);
-    lines.push(sm.title && String(sm.title).trim() ? String(sm.title) : '(not found)');
-    lines.push('');
-    lines.push('SPA description (.spa-details / fallbacks):');
-    if (sm.descriptionPreview && String(sm.descriptionPreview).trim()) {
-      lines.push(String(sm.descriptionPreview));
-    } else {
-      lines.push('(not found)');
-    }
-    if (typeof sm.descriptionLength === 'number' && sm.descriptionLength > 0) {
-      lines.push('');
-      lines.push(`(Description length on page before preview trim: ${sm.descriptionLength} characters)`);
-    }
-    previewBody = lines.join('\n');
-  } else if (sm.fetchedText && count > 0) {
-    previewBody = `(${count} character(s) captured; structured title/description unavailable — check the Results table “Actual” column for spa rows.)`;
-  }
-  spaPreviewEl.textContent = previewBody;
-}
-
-/** @param {Record<string, unknown> | null | undefined} pm */
-function renderPropertySearchMeta(pm) {
-  if (!propertySearchSection || !propertySearchIntro || !propertySearchPreviewEl) {
-    return;
-  }
-  if (!pm || (!pm.query && !pm.url)) {
-    propertySearchSection.hidden = true;
-    propertySearchPreviewEl.textContent = '';
-    return;
-  }
-
-  propertySearchSection.hidden = false;
-  const q = pm.query ? `Search query used: ${String(pm.query)}` : 'Search query could not be derived from the hotel URL.';
-  const count = typeof pm.characterCount === 'number' ? pm.characterCount : 0;
-  const status = pm.fetchedText
-    ? `Captured ${count} character(s) from p.hotel-desc.`
-    : 'No hotel description captured (search field not found, no results, or bot block).';
-  const urlLine = pm.url ? String(pm.url) : '(no result URL)';
-  propertySearchIntro.innerHTML = `${escapeHtml(q)}<br />${escapeHtml(urlLine)}<br /><span class="hint">${escapeHtml(status)}</span>`;
-  propertySearchPreviewEl.textContent = pm.fetchedText && pm.preview ? String(pm.preview) : '(empty preview)';
-}
-
 /** @param {Record<string, unknown> | null | undefined} om */
 function renderPropertyOverviewSpecialMeta(om) {
   if (!propertyOverviewSpecialSection || !propertyOverviewSpecialIntro || !propertyOverviewSpecialPreviewEl) {
@@ -303,29 +173,6 @@ function renderPropertyOverviewSpecialMeta(om) {
   propertyOverviewSpecialIntro.innerHTML = `<span class="hint">${escapeHtml(status)}</span>`;
   propertyOverviewSpecialPreviewEl.textContent =
     om.fetchedText && om.preview ? String(om.preview) : '(empty — see status above)';
-}
-
-/** @param {Record<string, unknown> | null | undefined} hm */
-function renderPropertyHighlightMeta(hm) {
-  if (!propertyHighlightSection || !propertyHighlightIntro || !propertyHighlightPreviewEl) {
-    return;
-  }
-  if (!hm || !hm.active) {
-    propertyHighlightSection.hidden = true;
-    propertyHighlightPreviewEl.textContent = '';
-    return;
-  }
-
-  propertyHighlightSection.hidden = false;
-  const n = typeof hm.segmentCount === 'number' ? hm.segmentCount : 0;
-  const status = hm.fetchedText
-    ? `Captured ${n} highlight paragraph(s) from the overview (#1…#${n} map to Excel “Property Highlight #1 … Description”, etc.).`
-    : 'No highlight paragraphs were captured. The overview may still be loading, or the layout may not use section.property-highlights / .highlight-item — check the terminal log.';
-  propertyHighlightIntro.innerHTML = `<span class="hint">${escapeHtml(status)}</span>`;
-  propertyHighlightPreviewEl.textContent =
-    hm.fetchedText && hm.preview && String(hm.preview).trim()
-      ? String(hm.preview)
-      : '(empty — see status above)';
 }
 
 /** @param {string | null | undefined} message */
@@ -390,11 +237,7 @@ form.addEventListener('submit', async (e) => {
       throw new Error(data.error || `Request failed (${res.status})`);
     }
     renderResults(data.results);
-    renderDiningMeta(data.diningMeta ?? null);
-    renderSpaMeta(data.spaMeta ?? null);
-    renderPropertySearchMeta(data.propertySearchMeta ?? null);
     renderPropertyOverviewSpecialMeta(data.propertyOverviewSpecialMeta ?? null);
-    renderPropertyHighlightMeta(data.propertyHighlightMeta ?? null);
     renderMessageBannerMeta(data.messageBannerMeta ?? null);
     renderSpecialNoticeMessage(data.specialNoticeMessage ?? null);
     let statusMsg = `Done — ${data.results.length} row(s). URL used: ${data.pageUrl}`;
@@ -410,9 +253,6 @@ form.addEventListener('submit', async (e) => {
     console.error(err);
     const msg = err instanceof Error ? err.message : String(err);
     statusEl.textContent = msg;
-    renderDiningMeta(null);
-    renderSpaMeta(null);
-    renderPropertySearchMeta(null);
     renderPropertyOverviewSpecialMeta(null);
     renderSpecialNoticeMessage(null);
     renderResults([

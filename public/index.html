@@ -36,10 +36,6 @@
             </button>
           </div>
           <input type="hidden" name="language" id="language" value="ENG" />
-          <p class="hint">
-            <strong>ESP</strong> = Spanish website (code <code>SPA</code> in your Excel column). For <strong>hotel spa</strong> copy,
-            use a section label like “Spa” / “Wellness” in column A — that loads <code>…/services-amenities/spa</code>.
-          </p>
         </div>
 
         <div class="field">
@@ -50,25 +46,55 @@
             type="url"
             placeholder="Paste a full lhw.com hotel link, or leave empty for server default"
           />
-          <p class="hint">
-            Leave empty to use the server default URL. When you paste a link, language buttons only swap the host
-            (<code>www</code>, <code>de</code>, <code>jp</code>, …) and keep path + query.             If your Excel has dining or spa
-            rows (column A mentions restaurant/dining/spa/wellness, etc.) with text in any language column, the tool opens
-            <code>…/services-amenities/dining</code> and/or <code>…/services-amenities/spa</code> to compare that copy.
-            Labels containing <strong>Property Highlight</strong> (e.g. “Property Highlight #2 Description”) are matched to
-            the three highlight tiles on the <strong>hotel overview</strong> (<code>section.property-highlights .highlight-item</code> lead
-            <code>p</code>, with fallbacks). After a run, open <strong>Property highlight copy (overview)</strong> below to verify what was read.
-            Labels containing <strong>Property search</strong> open the LHW homepage, search using the hotel name from your
-            pasted <code>/hotel/…</code> (or <code>/property-search/…</code>) URL, then read <code>p.hotel-desc</code> on the results page.
-            Put any text in column <strong>H</strong> (special note) on a row to compare that row’s expected language cell against the
-            <code>section.property-overview</code> pinned block (not used for Property Highlight or <strong>Message banner</strong> rows).
-            Use column A label <strong>Hours of Operation</strong> (or <strong>Restaurant #1 Hours…</strong>) to compare against <code>div.hours</code> on the dining subpage.
-            Use <strong>Renovation Notice</strong>, <strong>Special notice</strong>, <strong>Message banner</strong>, or <strong>Hotel message</strong> for overview notices in
-            <code>#main-content div.message</code> (title, body paragraphs, and CTA link text).
-            If dining/spa previews look empty or wrong, start the server from PowerShell with
-            <code>$env:HEADLESS=&quot;false&quot;; npm start</code> and/or
-            <code>$env:PW_CHANNEL=&quot;chrome&quot;; npm start</code> (uses installed Chrome instead of bundled Chromium).
+          <p class="hint hint-compact">
+            Leave blank to use the default hotel URL. Language buttons only change the host
+            (<code>www</code>, <code>de</code>, <code>jp</code>, …); your path and query stay the same.
           </p>
+          <details class="help-details">
+            <summary>How column A labels are matched on the site (click to expand)</summary>
+            <div class="help-details-body">
+              <p class="help-intro">
+                The tool reads column <strong>A</strong> (section name) and compares your Excel text (columns B–G) to the
+                matching block on the live LHW page. Empty cells are marked <strong>Skipped</strong>.
+              </p>
+              <ul class="help-list">
+                <li>
+                  <strong>Dining &amp; restaurants</strong> — Labels mentioning restaurant, dining, etc. open
+                  <code>…/services-amenities/dining</code> and compare restaurant copy.
+                </li>
+                <li>
+                  <strong>Spa &amp; wellness</strong> — Labels like Spa, Wellness, or Spa Description open
+                  <code>…/services-amenities/spa</code>. “Spa Name” / “Spa Title” compare the title only; “Spa Description” uses the body text.
+                </li>
+                <li>
+                  <strong>Hours of Operation</strong> — Compares <code>div.hours</code> on the dining page. Use
+                  <strong>Restaurant #1 Hours…</strong> or the outlet name in column A when a hotel has several restaurants.
+                </li>
+                <li>
+                  <strong>Property Highlight</strong> — e.g. “Property Highlight #2 Description” matches the three overview highlight tiles.
+                </li>
+                <li>
+                  <strong>Property search</strong> — Searches LHW from your <code>/hotel/…</code> URL and reads
+                  <code>p.hotel-desc</code> on the results page.
+                </li>
+                <li>
+                  <strong>Column H (special note)</strong> — Text in column H compares that row against the property-overview block
+                  (not used for highlights or message-banner rows).
+                </li>
+                <li>
+                  <strong>Overview notices</strong> — Renovation Notice, Special notice, Message banner, or Hotel message match the
+                  corresponding overview notice on the hotel page.
+                </li>
+              </ul>
+              <details class="help-details help-details-nested">
+                <summary>Troubleshooting (optional)</summary>
+                <p class="hint">
+                  If the site blocks the automated browser, restart the server in PowerShell with visible Chrome:
+                </p>
+                <pre class="help-code">$env:HEADLESS="false"; $env:PW_CHANNEL="chrome"; npm start</pre>
+              </details>
+            </div>
+          </details>
         </div>
 
         <div class="actions">
@@ -78,34 +104,10 @@
       </form>
     </main>
 
-    <section class="panel" id="dining-source-section" hidden>
-      <h2>Dining page source</h2>
-      <p class="hint" id="dining-source-intro"></p>
-      <pre id="dining-source-preview" class="service-preview" aria-label="Dining page text preview"></pre>
-    </section>
-
-    <section class="panel" id="spa-source-section" hidden>
-      <h2>Spa page source</h2>
-      <p class="hint" id="spa-source-intro"></p>
-      <pre id="spa-source-preview" class="service-preview" aria-label="Spa page text preview"></pre>
-    </section>
-
-    <section class="panel" id="property-search-section" hidden>
-      <h2>Property search result</h2>
-      <p class="hint" id="property-search-intro"></p>
-      <pre id="property-search-preview" class="service-preview" aria-label="Property search hotel description preview"></pre>
-    </section>
-
     <section class="panel" id="property-overview-special-section" hidden>
       <h2>Property overview (column H special note)</h2>
       <p class="hint" id="property-overview-special-intro"></p>
       <pre id="property-overview-special-preview" class="service-preview" aria-label="Property overview special block preview"></pre>
-    </section>
-
-    <section class="panel" id="property-highlight-section" hidden>
-      <h2>Property highlight copy (overview)</h2>
-      <p class="hint" id="property-highlight-intro"></p>
-      <pre id="property-highlight-preview" class="service-preview" aria-label="Property highlight paragraphs captured from overview"></pre>
     </section>
 
     <section class="panel" id="message-banner-section" hidden>

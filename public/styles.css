@@ -182,3 +182,93 @@ th {
   text-align: center;
   color: #64748b;
 }
+
+.hint-compact {
+  margin-top: 0.5rem;
+  line-height: 1.55;
+}
+
+.help-details {
+  margin-top: 0.65rem;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  background: #f8fafc;
+  overflow: hidden;
+}
+
+.help-details summary {
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 0.92rem;
+  color: #334155;
+  padding: 0.65rem 0.85rem;
+  list-style: none;
+  user-select: none;
+}
+
+.help-details summary::-webkit-details-marker {
+  display: none;
+}
+
+.help-details summary::before {
+  content: '▸ ';
+  color: #0f766e;
+  font-weight: 700;
+}
+
+.help-details[open] summary::before {
+  content: '▾ ';
+}
+
+.help-details summary:hover {
+  background: #f1f5f9;
+}
+
+.help-details-body {
+  padding: 0 0.85rem 0.85rem;
+  border-top: 1px solid #e2e8f0;
+}
+
+.help-intro {
+  margin: 0.75rem 0 0.5rem;
+  font-size: 0.9rem;
+  color: #475569;
+  line-height: 1.55;
+}
+
+.help-list {
+  margin: 0.5rem 0 0;
+  padding-left: 1.2rem;
+  font-size: 0.9rem;
+  color: #475569;
+  line-height: 1.55;
+}
+
+.help-list li {
+  margin-bottom: 0.55rem;
+}
+
+.help-list li:last-child {
+  margin-bottom: 0;
+}
+
+.help-details-nested {
+  margin-top: 0.75rem;
+  background: #fff;
+}
+
+.help-details-nested summary {
+  font-size: 0.88rem;
+  padding: 0.5rem 0.75rem;
+}
+
+.help-code {
+  margin: 0.35rem 0 0;
+  padding: 0.65rem 0.75rem;
+  font-size: 0.82rem;
+  line-height: 1.4;
+  background: #0f172a;
+  color: #e2e8f0;
+  border-radius: 8px;
+  overflow-x: auto;
+}
