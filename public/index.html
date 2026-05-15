@@ -61,7 +61,9 @@
             Labels containing <strong>Property search</strong> open the LHW homepage, search using the hotel name from your
             pasted <code>/hotel/…</code> (or <code>/property-search/…</code>) URL, then read <code>p.hotel-desc</code> on the results page.
             Put any text in column <strong>H</strong> (special note) on a row to compare that row’s expected language cell against the
-            <code>section.property-overview</code> pinned block (not used for Property Highlight rows — those always use highlight copy).
+            <code>section.property-overview</code> pinned block (not used for Property Highlight or <strong>Message banner</strong> rows).
+            Use column A label <strong>Renovation Notice</strong>, <strong>Special notice</strong>, <strong>Message banner</strong>, or <strong>Hotel message</strong> to compare against the overview notice in
+            <code>#main-content div.message</code> (title, body paragraphs, and CTA link text).
             If dining/spa previews look empty or wrong, start the server from PowerShell with
             <code>$env:HEADLESS=&quot;false&quot;; npm start</code> and/or
             <code>$env:PW_CHANNEL=&quot;chrome&quot;; npm start</code> (uses installed Chrome instead of bundled Chromium).
@@ -103,6 +105,18 @@
       <h2>Property highlight copy (overview)</h2>
       <p class="hint" id="property-highlight-intro"></p>
       <pre id="property-highlight-preview" class="service-preview" aria-label="Property highlight paragraphs captured from overview"></pre>
+    </section>
+
+    <section class="panel" id="message-banner-section" hidden>
+      <h2>Overview message banner</h2>
+      <p class="hint" id="message-banner-intro"></p>
+      <pre id="message-banner-preview" class="service-preview" aria-label="Hotel overview div.message text preview"></pre>
+    </section>
+
+    <section class="panel" id="special-notice-section" hidden>
+      <h2>Special notice (site)</h2>
+      <p class="hint" id="special-notice-intro"></p>
+      <pre id="special-notice-preview" class="service-preview" aria-label="Special notice captured from the hotel overview"></pre>
     </section>
 
     <section class="panel">

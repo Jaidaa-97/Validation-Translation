@@ -41,6 +41,12 @@ const propertyOverviewSpecialPreviewEl = document.getElementById('property-overv
 const propertyHighlightSection = document.getElementById('property-highlight-section');
 const propertyHighlightIntro = document.getElementById('property-highlight-intro');
 const propertyHighlightPreviewEl = document.getElementById('property-highlight-preview');
+const messageBannerSection = document.getElementById('message-banner-section');
+const messageBannerIntro = document.getElementById('message-banner-intro');
+const messageBannerPreviewEl = document.getElementById('message-banner-preview');
+const specialNoticeSection = document.getElementById('special-notice-section');
+const specialNoticeIntro = document.getElementById('special-notice-intro');
+const specialNoticePreviewEl = document.getElementById('special-notice-preview');
 
 /**
  * Keep path + query; only swap the hostname to match the selected language (www, de, it, …).
@@ -306,6 +312,47 @@ function renderPropertyHighlightMeta(hm) {
       : '(empty — see status above)';
 }
 
+/** @param {string | null | undefined} message */
+function renderSpecialNoticeMessage(message) {
+  if (!specialNoticeSection || !specialNoticeIntro || !specialNoticePreviewEl) {
+    return;
+  }
+  const text = message != null ? String(message).trim() : '';
+  if (!text) {
+    specialNoticeSection.hidden = true;
+    specialNoticePreviewEl.textContent = '';
+    return;
+  }
+
+  specialNoticeSection.hidden = false;
+  specialNoticeIntro.innerHTML = `<span class="hint">Captured ${text.length} character(s) from <code>div.alert.alert-info.special-notice div.message</code> (title, paragraphs, CTA link text).</span>`;
+  specialNoticePreviewEl.textContent = text;
+}
+
+/** @param {Record<string, unknown> | null | undefined} mm */
+function renderMessageBannerMeta(mm) {
+  if (!messageBannerSection || !messageBannerIntro || !messageBannerPreviewEl) {
+    return;
+  }
+  if (!mm || !mm.active) {
+    messageBannerSection.hidden = true;
+    messageBannerPreviewEl.textContent = '';
+    return;
+  }
+
+  messageBannerSection.hidden = false;
+  const sel = mm.selector ? String(mm.selector) : '#main-content div.message';
+  const count = typeof mm.characterCount === 'number' ? mm.characterCount : 0;
+  const status = mm.fetchedText
+    ? `Captured ${count} character(s) from ${sel} (heading, paragraphs, link text).`
+    : `No text from ${sel}. The hotel may not show a message strip on this locale, or the block is outside #main-content.`;
+  messageBannerIntro.innerHTML = `<span class="hint">${escapeHtml(status)}</span>`;
+  messageBannerPreviewEl.textContent =
+    mm.fetchedText && mm.preview && String(mm.preview).trim()
+      ? String(mm.preview)
+      : '(empty — see status above)';
+}
+
 form.addEventListener('submit', async (e) => {
   e.preventDefault();
   statusEl.textContent = 'Running Playwright… this may take a minute.';
@@ -332,6 +379,8 @@ form.addEventListener('submit', async (e) => {
     renderPropertySearchMeta(data.propertySearchMeta ?? null);
     renderPropertyOverviewSpecialMeta(data.propertyOverviewSpecialMeta ?? null);
     renderPropertyHighlightMeta(data.propertyHighlightMeta ?? null);
+    renderMessageBannerMeta(data.messageBannerMeta ?? null);
+    renderSpecialNoticeMessage(data.specialNoticeMessage ?? null);
     let statusMsg = `Done — ${data.results.length} row(s). URL used: ${data.pageUrl}`;
     const rows = data.results || [];
     const allSkipped =
@@ -349,6 +398,7 @@ form.addEventListener('submit', async (e) => {
     renderSpaMeta(null);
     renderPropertySearchMeta(null);
     renderPropertyOverviewSpecialMeta(null);
+    renderSpecialNoticeMessage(null);
     renderResults([
       {
         hotelName: '',

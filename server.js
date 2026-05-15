@@ -113,6 +113,8 @@ app.post('/api/run', upload.single('file'), async (req, res) => {
       propertySearchMeta,
       propertyOverviewSpecialMeta,
       propertyHighlightMeta,
+      messageBannerMeta,
+      specialNoticeMessage,
       hotelName,
     } = await runComparison({
       excelPath: req.file.path,
@@ -131,6 +133,8 @@ app.post('/api/run', upload.single('file'), async (req, res) => {
       propertySearchMeta,
       propertyOverviewSpecialMeta,
       propertyHighlightMeta,
+      messageBannerMeta,
+      specialNoticeMessage,
       pageUrl,
       language,
       hotelName,
