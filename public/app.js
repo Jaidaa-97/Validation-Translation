@@ -176,11 +176,27 @@ function renderDiningMeta(dm) {
     ? 'Opened the hotel overview first, then loaded the dining subpage.'
     : 'Loaded the dining subpage after the overview URL.';
   const count = typeof dm.characterCount === 'number' ? dm.characterCount : 0;
+  const hoursPreview =
+    dm.operationHoursPreview && String(dm.operationHoursPreview).trim()
+      ? String(dm.operationHoursPreview)
+      : '';
+  const hoursStatus = hoursPreview
+    ? 'Operation hours: captured from div.hours.'
+    : 'Operation hours: none found on the dining page.';
   const status = dm.fetchedText
-    ? `Captured ${count} character(s) from the page.`
-    : 'No body text was captured. Try: close other tabs using the same hotel run, set environment variable HEADLESS=false, or check the hotel URL slug.';
+    ? `Captured ${count} character(s) from the page. ${hoursStatus}`
+    : `No body text was captured. ${hoursStatus} Try: close other tabs using the same hotel run, set environment variable HEADLESS=false, or check the hotel URL slug.`;
   diningIntro.innerHTML = `${escapeHtml(String(dm.url))}<br /><span class="hint">${escapeHtml(opened)} ${escapeHtml(status)}</span>`;
-  diningPreviewEl.textContent = dm.fetchedText && dm.preview ? String(dm.preview) : '(empty preview)';
+  let previewBody = dm.fetchedText && dm.preview ? String(dm.preview) : '(empty preview)';
+  if (hoursPreview) {
+    previewBody = [
+      previewBody,
+      '',
+      '--- Operation hours (div.hours) ---',
+      hoursPreview,
+    ].join('\n');
+  }
+  diningPreviewEl.textContent = previewBody;
 }
 
 /** @param {Record<string, unknown> | null | undefined} sm */

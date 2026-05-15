@@ -62,7 +62,8 @@
             pasted <code>/hotel/…</code> (or <code>/property-search/…</code>) URL, then read <code>p.hotel-desc</code> on the results page.
             Put any text in column <strong>H</strong> (special note) on a row to compare that row’s expected language cell against the
             <code>section.property-overview</code> pinned block (not used for Property Highlight or <strong>Message banner</strong> rows).
-            Use column A label <strong>Renovation Notice</strong>, <strong>Special notice</strong>, <strong>Message banner</strong>, or <strong>Hotel message</strong> to compare against the overview notice in
+            Use column A label <strong>Hours of Operation</strong> (or <strong>Restaurant #1 Hours…</strong>) to compare against <code>div.hours</code> on the dining subpage.
+            Use <strong>Renovation Notice</strong>, <strong>Special notice</strong>, <strong>Message banner</strong>, or <strong>Hotel message</strong> for overview notices in
             <code>#main-content div.message</code> (title, body paragraphs, and CTA link text).
             If dining/spa previews look empty or wrong, start the server from PowerShell with
             <code>$env:HEADLESS=&quot;false&quot;; npm start</code> and/or
