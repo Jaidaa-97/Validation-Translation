@@ -24,6 +24,21 @@
         </div>
 
         <div class="field">
+          <label>Site language (LHW locale)</label>
+          <div class="lang-buttons" role="group" aria-label="LHW site language">
+            <button type="button" class="lang-btn" data-lang="ENG">ENG</button>
+            <button type="button" class="lang-btn" data-lang="GER">GER</button>
+            <button type="button" class="lang-btn" data-lang="ITA">ITA</button>
+            <button type="button" class="lang-btn" data-lang="FRE">FRE</button>
+            <button type="button" class="lang-btn" data-lang="JAP">JAP</button>
+            <button type="button" class="lang-btn" data-lang="SPA" title="Spanish — opens es.lhw.com (not hotel spa)">
+              ESP
+            </button>
+          </div>
+          <input type="hidden" name="language" id="language" value="ENG" />
+        </div>
+
+        <div class="field">
           <label for="pageUrl">Hotel page URL (optional)</label>
           <input
             id="pageUrl"
@@ -32,16 +47,15 @@
             placeholder="Paste a full lhw.com hotel link, or leave empty for server default"
           />
           <p class="hint hint-compact">
-            Leave blank to use the default hotel URL. The run automatically checks all configured
-            language hosts (<code>www</code>, <code>de</code>, <code>it</code>, <code>fr</code>,
-            <code>jp</code>, <code>es</code>).
+            Leave blank to use the default hotel URL. Language buttons only change the host
+            (<code>www</code>, <code>de</code>, <code>jp</code>, …); your path and query stay the same.
           </p>
           <details class="help-details">
             <summary>How column A labels are matched on the site (click to expand)</summary>
             <div class="help-details-body">
               <p class="help-intro">
                 The tool reads column <strong>A</strong> (section name) and compares your Excel text
-                (columns B–G) to the matching block on each live LHW language page.
+                (columns B–G) to the matching block on the selected live LHW language page.
               </p>
               <ul class="help-list">
                 <li>

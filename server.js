@@ -93,6 +93,9 @@ app.post('/api/run', upload.single('file'), async (req, res) => {
       return res.status(400).json({ error: 'Missing file field "file".' });
     }
 
+    const requestedLanguage = String(req.body.language || '')
+      .trim()
+      .toUpperCase();
     const rawUrl = String(req.body.pageUrl || '').trim() || DEFAULT_LHW_URL;
     let basePageUrl;
     try {
@@ -102,9 +105,12 @@ app.post('/api/run', upload.single('file'), async (req, res) => {
     }
 
     const headless = String(process.env.HEADLESS || 'true').toLowerCase() !== 'false';
-    const languages = Object.keys(LANGUAGE_HOSTS);
+    const languages = requestedLanguage && LANGUAGE_HOSTS[requestedLanguage]
+      ? [requestedLanguage]
+      : Object.keys(LANGUAGE_HOSTS);
     const languageRuns = [];
     let abortedMessage = '';
+    const startedAtMs = Date.now();
 
     res.setHeader('Content-Type', 'application/x-ndjson; charset=utf-8');
     res.setHeader('Cache-Control', 'no-store');
@@ -119,6 +125,7 @@ app.post('/api/run', upload.single('file'), async (req, res) => {
       type: 'start',
       pageUrl: basePageUrl,
       languages,
+      startedAtMs,
     });
 
     const englishBaselineFailed = (run) => {
@@ -137,6 +144,7 @@ app.post('/api/run', upload.single('file'), async (req, res) => {
 
     for (const language of languages) {
       const pageUrl = buildUrlForLanguage(basePageUrl, language);
+      const languageStartedAtMs = Date.now();
       let languageRun;
       try {
         const run = await runComparison({
@@ -169,17 +177,22 @@ app.post('/api/run', upload.single('file'), async (req, res) => {
           error: message,
         };
       }
+      const durationMs = Date.now() - languageStartedAtMs;
+      languageRun.durationMs = durationMs;
       languageRuns.push(languageRun);
       writeEvent({
         type: 'language',
         run: languageRun,
+        durationMs,
+        elapsedMs: Date.now() - startedAtMs,
       });
-      if (language === 'ENG' && englishBaselineFailed(languageRun)) {
+      if (languages.length > 1 && language === 'ENG' && englishBaselineFailed(languageRun)) {
         abortedMessage =
           'English copy in the uploaded file does not match the live site. Please update the English content before checking other languages.';
         writeEvent({
           type: 'baselineError',
           error: abortedMessage,
+          elapsedMs: Date.now() - startedAtMs,
         });
         break;
       }
@@ -196,6 +209,7 @@ app.post('/api/run', upload.single('file'), async (req, res) => {
       totalRows: results.length,
       aborted: Boolean(abortedMessage),
       error: abortedMessage,
+      elapsedMs: Date.now() - startedAtMs,
     });
     res.end();
   } catch (err) {

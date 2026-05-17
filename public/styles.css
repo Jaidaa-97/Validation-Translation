@@ -79,6 +79,27 @@ input[type='url'] {
   background: #fff;
 }
 
+.lang-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.lang-btn {
+  border: 1px solid #cbd5e1;
+  background: #f1f5f9;
+  padding: 0.45rem 0.85rem;
+  border-radius: 999px;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.lang-btn.active {
+  background: #2563eb;
+  color: #fff;
+  border-color: #1d4ed8;
+}
+
 .actions {
   display: flex;
   align-items: center;

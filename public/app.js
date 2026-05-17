@@ -14,11 +14,23 @@ const LANGUAGE_LABELS = {
   SPA: 'Spanish',
 };
 
+/** Same as server LANGUAGE_HOSTS — used if /api/health has no languageHosts yet. */
+const FALLBACK_LANGUAGE_HOSTS = {
+  ENG: 'www.lhw.com',
+  GER: 'de.lhw.com',
+  ITA: 'it.lhw.com',
+  FRE: 'fr.lhw.com',
+  JAP: 'jp.lhw.com',
+  SPA: 'es.lhw.com',
+};
+
 /** Filled from GET /api/health */
+let languageHosts = { ...FALLBACK_LANGUAGE_HOSTS };
 let serverDefaultUrl = DEFAULT_PAGE_URL;
 
 const form = document.getElementById('run-form');
 const fileInput = document.getElementById('file');
+const languageInput = document.getElementById('language');
 const pageUrlInput = document.getElementById('pageUrl');
 const runBtn = document.getElementById('run-btn');
 const statusEl = document.getElementById('status');
@@ -33,10 +45,54 @@ const specialNoticeSection = document.getElementById('special-notice-section');
 const specialNoticeIntro = document.getElementById('special-notice-intro');
 const specialNoticePreviewEl = document.getElementById('special-notice-preview');
 
+/**
+ * Keep path + query; only swap the hostname to match the selected language (www, de, it, ...).
+ * @param {string} urlString
+ * @param {string} langCode ENG | GER | ...
+ * @returns {string}
+ */
+function buildUrlWithLanguageHost(urlString, langCode) {
+  const host = languageHosts[langCode];
+  if (!host) {
+    return urlString;
+  }
+  try {
+    const u = new URL(urlString.trim() || serverDefaultUrl);
+    if (!u.hostname.toLowerCase().endsWith('lhw.com')) {
+      return urlString;
+    }
+    u.hostname = host;
+    return u.toString();
+  } catch {
+    return urlString;
+  }
+}
+
+document.querySelectorAll('.lang-btn').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    const lang = btn.getAttribute('data-lang');
+    languageInput.value = lang;
+    document.querySelectorAll('.lang-btn').forEach((b) => b.classList.remove('active'));
+    btn.classList.add('active');
+
+    // Only rewrite the host when the user already entered a URL (default field stays empty).
+    const base = pageUrlInput.value.trim();
+    if (base) {
+      pageUrlInput.value = buildUrlWithLanguageHost(base, lang);
+    }
+  });
+});
+
+// Default selection: ENG
+document.querySelector('.lang-btn[data-lang="ENG"]')?.classList.add('active');
+
 async function loadDefaultUrlHint() {
   try {
     const res = await fetch('/api/health');
     const data = await res.json();
+    if (data.languageHosts && typeof data.languageHosts === 'object') {
+      languageHosts = { ...FALLBACK_LANGUAGE_HOSTS, ...data.languageHosts };
+    }
     if (data.defaultUrl) {
       serverDefaultUrl = data.defaultUrl;
       // Hint only — input stays empty until the user pastes a link (server uses default if still empty).
@@ -85,9 +141,24 @@ function languageTitle(code) {
   return `${label} (${code})`;
 }
 
+function formatDuration(ms) {
+  const totalSeconds = Math.max(0, Math.round(Number(ms || 0) / 1000));
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  if (minutes > 0) {
+    return `${minutes}m ${String(seconds).padStart(2, '0')}s`;
+  }
+  return `${seconds}s`;
+}
+
+function runProgressLabel(expectedLanguages) {
+  return expectedLanguages === 1 ? 'Running selected language' : 'Running all languages';
+}
+
 function renderLanguageRun(run, index) {
   const rows = run.results || [];
   const counts = countStatuses(rows);
+  const duration = typeof run.durationMs === 'number' ? ` · ${formatDuration(run.durationMs)}` : '';
   const details = document.createElement('details');
   details.className = 'language-section';
   details.open = index === 0 || counts.failed > 0 || Boolean(run.error);
@@ -99,7 +170,7 @@ function renderLanguageRun(run, index) {
       ${rows.length} row(s) ·
       <span class="pass">${counts.passed} passed</span> ·
       <span class="fail">${counts.failed} failed</span> ·
-      <span class="warn">${counts.skipped + counts.other} skipped/other</span>
+      <span class="warn">${counts.skipped + counts.other} skipped/other</span>${duration}
     </span>
   `;
   details.appendChild(summary);
@@ -209,6 +280,7 @@ async function readRunStream(res) {
   let completedLanguages = 0;
   let totalRows = 0;
   let abortedMessage = '';
+  let elapsedMs = 0;
 
   const handleEvent = (event) => {
     if (!event || typeof event !== 'object') {
@@ -217,15 +289,21 @@ async function readRunStream(res) {
     if (event.type === 'start') {
       pageUrl = event.pageUrl || '';
       expectedLanguages = Array.isArray(event.languages) ? event.languages.length : 0;
-      statusEl.textContent = `Running all languages… 0/${expectedLanguages || '?'} complete.`;
+      statusEl.textContent = `${runProgressLabel(expectedLanguages)}… 0/${expectedLanguages || '?'} complete. Elapsed: ${formatDuration(0)}`;
       return;
     }
     if (event.type === 'language') {
       const run = event.run || {};
+      if (typeof event.durationMs === 'number' && typeof run.durationMs !== 'number') {
+        run.durationMs = event.durationMs;
+      }
       renderLanguageRun(run, completedLanguages);
       completedLanguages += 1;
       totalRows += (run.results || []).length;
-      statusEl.textContent = `Running all languages… ${completedLanguages}/${expectedLanguages || '?'} complete.`;
+      if (typeof event.elapsedMs === 'number') {
+        elapsedMs = event.elapsedMs;
+      }
+      statusEl.textContent = `${runProgressLabel(expectedLanguages)}… ${completedLanguages}/${expectedLanguages || '?'} complete. Elapsed: ${formatDuration(elapsedMs)}`;
       return;
     }
     if (event.type === 'done') {
@@ -233,6 +311,9 @@ async function readRunStream(res) {
       expectedLanguages = Array.isArray(event.languages) ? event.languages.length : expectedLanguages;
       if (typeof event.totalRows === 'number') {
         totalRows = event.totalRows;
+      }
+      if (typeof event.elapsedMs === 'number') {
+        elapsedMs = event.elapsedMs;
       }
       if (event.aborted && event.error) {
         abortedMessage = event.error;
@@ -248,7 +329,10 @@ async function readRunStream(res) {
       message.className = 'run-error';
       message.textContent = abortedMessage;
       resultsContainer.appendChild(message);
-      statusEl.textContent = abortedMessage;
+      if (typeof event.elapsedMs === 'number') {
+        elapsedMs = event.elapsedMs;
+      }
+      statusEl.textContent = `${abortedMessage} Elapsed: ${formatDuration(elapsedMs)}`;
       return;
     }
     if (event.type === 'error') {
@@ -281,6 +365,7 @@ async function readRunStream(res) {
     languageCount: completedLanguages,
     totalRows,
     abortedMessage,
+    elapsedMs,
   };
 }
 
@@ -364,11 +449,12 @@ function renderMessageBannerMeta(mm) {
 form.addEventListener('submit', async (e) => {
   e.preventDefault();
   clearRunOutput();
-  statusEl.textContent = 'Running Playwright for all languages… this may take several minutes.';
+  statusEl.textContent = `Running Playwright for ${languageInput.value || 'selected language'}…`;
   runBtn.disabled = true;
 
   const fd = new FormData();
   fd.append('file', fileInput.files[0]);
+  fd.append('language', languageInput.value);
   // Empty = server applies DEFAULT_LHW_URL (see server.js).
   fd.append('pageUrl', pageUrlInput.value.trim());
 
@@ -389,8 +475,8 @@ form.addEventListener('submit', async (e) => {
     }
     const summary = await readRunStream(res);
     statusEl.textContent = summary.abortedMessage
-      ? summary.abortedMessage
-      : `Done — ${summary.languageCount} language(s), ${summary.totalRows} total row(s). Base URL: ${summary.pageUrl}`;
+      ? `${summary.abortedMessage} Elapsed: ${formatDuration(summary.elapsedMs)}`
+      : `Done in ${formatDuration(summary.elapsedMs)} — ${summary.languageCount} language(s), ${summary.totalRows} total row(s). Base URL: ${summary.pageUrl}`;
   } catch (err) {
     console.error(err);
     const msg = err instanceof Error ? err.message : String(err);
