@@ -5,6 +5,7 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
+    "demo:video": "node scripts/record-demo-video.js",
     "postinstall": "npx playwright install chromium"
   },
   "keywords": ["playwright", "lhw", "translation", "excel"],
