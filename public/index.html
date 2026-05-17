@@ -26,6 +26,7 @@
         <div class="field">
           <label>Site language (LHW locale)</label>
           <div class="lang-buttons" role="group" aria-label="LHW site language">
+            <button type="button" class="lang-btn" data-lang="ALL">ALL</button>
             <button type="button" class="lang-btn" data-lang="ENG">ENG</button>
             <button type="button" class="lang-btn" data-lang="GER">GER</button>
             <button type="button" class="lang-btn" data-lang="ITA">ITA</button>
@@ -47,8 +48,9 @@
             placeholder="Paste a full lhw.com hotel link, or leave empty for server default"
           />
           <p class="hint hint-compact">
-            Leave blank to use the default hotel URL. Language buttons only change the host
-            (<code>www</code>, <code>de</code>, <code>jp</code>, …); your path and query stay the same.
+            Select <strong>ALL</strong> to check every language, or choose one locale. Language buttons
+            only change the host (<code>www</code>, <code>de</code>, <code>jp</code>, …); your path
+            and query stay the same.
           </p>
           <details class="help-details">
             <summary>How column A labels are matched on the site (click to expand)</summary>

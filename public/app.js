@@ -6,6 +6,7 @@ const DEFAULT_PAGE_URL =
   'https://www.lhw.com/hotel/Kahala-Yokohama-Japan?rooms=1&numadult1=2&numchild1=0';
 
 const LANGUAGE_LABELS = {
+  ALL: 'All Languages',
   ENG: 'English',
   GER: 'German',
   ITA: 'Italian',
@@ -77,7 +78,7 @@ document.querySelectorAll('.lang-btn').forEach((btn) => {
 
     // Only rewrite the host when the user already entered a URL (default field stays empty).
     const base = pageUrlInput.value.trim();
-    if (base) {
+    if (base && lang !== 'ALL') {
       pageUrlInput.value = buildUrlWithLanguageHost(base, lang);
     }
   });
@@ -153,6 +154,15 @@ function formatDuration(ms) {
 
 function runProgressLabel(expectedLanguages) {
   return expectedLanguages === 1 ? 'Running selected language' : 'Running all languages';
+}
+
+function selectedRunLabel() {
+  return languageInput.value === 'ALL' ? 'all languages' : languageInput.value || 'selected language';
+}
+
+function progressStatus(expectedLanguages, completedLanguages, elapsedMs, currentLanguage = '') {
+  const active = currentLanguage ? ` (${currentLanguage})` : '';
+  return `${runProgressLabel(expectedLanguages)}${active}… ${completedLanguages}/${expectedLanguages || '?'} complete. Elapsed: ${formatDuration(elapsedMs)}`;
 }
 
 function renderLanguageRun(run, index) {
@@ -281,6 +291,39 @@ async function readRunStream(res) {
   let totalRows = 0;
   let abortedMessage = '';
   let elapsedMs = 0;
+  let currentLanguage = '';
+  let clientProgressStartedAt = 0;
+  let serverElapsedAtLastEvent = 0;
+  let progressTimer = null;
+
+  const startProgressTimer = () => {
+    if (progressTimer) {
+      return;
+    }
+    clientProgressStartedAt = Date.now();
+    serverElapsedAtLastEvent = elapsedMs;
+    progressTimer = window.setInterval(() => {
+      const liveElapsedMs = serverElapsedAtLastEvent + (Date.now() - clientProgressStartedAt);
+      statusEl.textContent = progressStatus(
+        expectedLanguages,
+        completedLanguages,
+        liveElapsedMs,
+        currentLanguage,
+      );
+    }, 1000);
+  };
+
+  const syncProgressTimer = () => {
+    clientProgressStartedAt = Date.now();
+    serverElapsedAtLastEvent = elapsedMs;
+  };
+
+  const stopProgressTimer = () => {
+    if (progressTimer) {
+      window.clearInterval(progressTimer);
+      progressTimer = null;
+    }
+  };
 
   const handleEvent = (event) => {
     if (!event || typeof event !== 'object') {
@@ -289,7 +332,22 @@ async function readRunStream(res) {
     if (event.type === 'start') {
       pageUrl = event.pageUrl || '';
       expectedLanguages = Array.isArray(event.languages) ? event.languages.length : 0;
-      statusEl.textContent = `${runProgressLabel(expectedLanguages)}… 0/${expectedLanguages || '?'} complete. Elapsed: ${formatDuration(0)}`;
+      statusEl.textContent = progressStatus(expectedLanguages, completedLanguages, 0);
+      startProgressTimer();
+      return;
+    }
+    if (event.type === 'languageStart') {
+      currentLanguage = event.language || '';
+      if (typeof event.elapsedMs === 'number') {
+        elapsedMs = event.elapsedMs;
+      }
+      syncProgressTimer();
+      statusEl.textContent = progressStatus(
+        expectedLanguages,
+        completedLanguages,
+        elapsedMs,
+        currentLanguage,
+      );
       return;
     }
     if (event.type === 'language') {
@@ -303,7 +361,9 @@ async function readRunStream(res) {
       if (typeof event.elapsedMs === 'number') {
         elapsedMs = event.elapsedMs;
       }
-      statusEl.textContent = `${runProgressLabel(expectedLanguages)}… ${completedLanguages}/${expectedLanguages || '?'} complete. Elapsed: ${formatDuration(elapsedMs)}`;
+      currentLanguage = '';
+      syncProgressTimer();
+      statusEl.textContent = progressStatus(expectedLanguages, completedLanguages, elapsedMs);
       return;
     }
     if (event.type === 'done') {
@@ -318,6 +378,7 @@ async function readRunStream(res) {
       if (event.aborted && event.error) {
         abortedMessage = event.error;
       }
+      stopProgressTimer();
       return;
     }
     if (event.type === 'baselineError') {
@@ -332,6 +393,7 @@ async function readRunStream(res) {
       if (typeof event.elapsedMs === 'number') {
         elapsedMs = event.elapsedMs;
       }
+      stopProgressTimer();
       statusEl.textContent = `${abortedMessage} Elapsed: ${formatDuration(elapsedMs)}`;
       return;
     }
@@ -359,6 +421,8 @@ async function readRunStream(res) {
   if (buffer.trim()) {
     handleEvent(JSON.parse(buffer.trim()));
   }
+
+  stopProgressTimer();
 
   return {
     pageUrl,
@@ -449,7 +513,7 @@ function renderMessageBannerMeta(mm) {
 form.addEventListener('submit', async (e) => {
   e.preventDefault();
   clearRunOutput();
-  statusEl.textContent = `Running Playwright for ${languageInput.value || 'selected language'}…`;
+  statusEl.textContent = `Running Playwright for ${selectedRunLabel()}…`;
   runBtn.disabled = true;
 
   const fd = new FormData();

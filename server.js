@@ -145,6 +145,13 @@ app.post('/api/run', upload.single('file'), async (req, res) => {
     for (const language of languages) {
       const pageUrl = buildUrlForLanguage(basePageUrl, language);
       const languageStartedAtMs = Date.now();
+      writeEvent({
+        type: 'languageStart',
+        language,
+        pageUrl,
+        startedAtMs: languageStartedAtMs,
+        elapsedMs: languageStartedAtMs - startedAtMs,
+      });
       let languageRun;
       try {
         const run = await runComparison({
