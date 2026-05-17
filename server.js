@@ -13,6 +13,7 @@ const express = require('express');
 const multer = require('multer');
 const { runComparison } = require('./lib/playwrightRunner');
 const { buildUrlForLanguage, LANGUAGE_HOSTS } = require('./lib/changeLanguage');
+const { isFeatureSectionLabel } = require('./lib/featuresComparison');
 
 /** Default hotel page from your brief — override in the form or with DEFAULT_LHW_URL. */
 const DEFAULT_LHW_URL =
@@ -82,8 +83,9 @@ app.get('/api/health', (_req, res) => {
 /**
  * POST multipart form:
  * - file: Excel workbook
- * - language: ENG | GER | ITA | FRE | JAP | SPA
  * - pageUrl: optional full URL to open
+ *
+ * Runs every configured LHW language and streams one result group as soon as it is ready.
  */
 app.post('/api/run', upload.single('file'), async (req, res) => {
   try {
@@ -91,59 +93,119 @@ app.post('/api/run', upload.single('file'), async (req, res) => {
       return res.status(400).json({ error: 'Missing file field "file".' });
     }
 
-    const language = String(req.body.language || '').trim();
-    if (!language) {
-      return res.status(400).json({ error: 'Missing language.' });
-    }
-
     const rawUrl = String(req.body.pageUrl || '').trim() || DEFAULT_LHW_URL;
-    let pageUrl;
+    let basePageUrl;
     try {
-      pageUrl = buildUrlForLanguage(rawUrl, language);
+      basePageUrl = buildUrlForLanguage(rawUrl, 'ENG');
     } catch (e) {
       return res.status(400).json({ error: e instanceof Error ? e.message : String(e) });
     }
 
     const headless = String(process.env.HEADLESS || 'true').toLowerCase() !== 'false';
+    const languages = Object.keys(LANGUAGE_HOSTS);
+    const languageRuns = [];
+    let abortedMessage = '';
 
-    const {
-      results,
-      diningMeta,
-      spaMeta,
-      propertySearchMeta,
-      propertyOverviewSpecialMeta,
-      propertyHighlightMeta,
-      messageBannerMeta,
-      specialNoticeMessage,
-      operationHours,
-      hotelName,
-    } = await runComparison({
-      excelPath: req.file.path,
-      languageCode: language,
-      pageUrl,
-      headless,
+    res.setHeader('Content-Type', 'application/x-ndjson; charset=utf-8');
+    res.setHeader('Cache-Control', 'no-store');
+    res.setHeader('X-Accel-Buffering', 'no');
+    res.flushHeaders?.();
+
+    const writeEvent = (event) => {
+      res.write(`${JSON.stringify(event)}\n`);
+    };
+
+    writeEvent({
+      type: 'start',
+      pageUrl: basePageUrl,
+      languages,
     });
+
+    const englishBaselineFailed = (run) => {
+      const rows = run?.results || [];
+      return (
+        Boolean(run?.error) ||
+        rows.some((row) => {
+          const section = String(row.section || '').replace(/^Hotel Features\s*→\s*/i, '');
+          if (isFeatureSectionLabel(section)) {
+            return false;
+          }
+          return String(row.status || '').toLowerCase() !== 'passed';
+        })
+      );
+    };
+
+    for (const language of languages) {
+      const pageUrl = buildUrlForLanguage(basePageUrl, language);
+      let languageRun;
+      try {
+        const run = await runComparison({
+          excelPath: req.file.path,
+          languageCode: language,
+          pageUrl,
+          headless,
+        });
+        languageRun = {
+          language,
+          pageUrl,
+          ...run,
+        };
+      } catch (runErr) {
+        const message = runErr instanceof Error ? runErr.message : String(runErr);
+        languageRun = {
+          language,
+          pageUrl,
+          results: [
+            {
+              hotelName: '',
+              section: '(language run error)',
+              language,
+              expectedText: '',
+              actualText: '',
+              status: 'Failed',
+              note: message,
+            },
+          ],
+          error: message,
+        };
+      }
+      languageRuns.push(languageRun);
+      writeEvent({
+        type: 'language',
+        run: languageRun,
+      });
+      if (language === 'ENG' && englishBaselineFailed(languageRun)) {
+        abortedMessage =
+          'English copy in the uploaded file does not match the live site. Please update the English content before checking other languages.';
+        writeEvent({
+          type: 'baselineError',
+          error: abortedMessage,
+        });
+        break;
+      }
+    }
 
     // Clean up uploaded file after run (keep disk tidy)
     fs.promises.unlink(req.file.path).catch(() => {});
 
-    res.json({
-      results,
-      diningMeta,
-      spaMeta,
-      propertySearchMeta,
-      propertyOverviewSpecialMeta,
-      propertyHighlightMeta,
-      messageBannerMeta,
-      specialNoticeMessage,
-      operationHours,
-      pageUrl,
-      language,
-      hotelName,
+    const results = languageRuns.flatMap((run) => run.results || []);
+    writeEvent({
+      type: 'done',
+      pageUrl: basePageUrl,
+      languages,
+      totalRows: results.length,
+      aborted: Boolean(abortedMessage),
+      error: abortedMessage,
     });
+    res.end();
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    res.status(500).json({ error: message });
+    if (res.headersSent) {
+      res.write(`${JSON.stringify({ type: 'error', error: message })}\n`);
+      res.end();
+    } else {
+      res.status(500).json({ error: message });
+    }
   }
 });
 

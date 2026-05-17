@@ -1,31 +1,28 @@
 /**
- * Front-end logic: language buttons, form submit via fetch, results table.
+ * Front-end logic: form submit via fetch, expandable per-language results.
  */
 
 const DEFAULT_PAGE_URL =
   'https://www.lhw.com/hotel/Kahala-Yokohama-Japan?rooms=1&numadult1=2&numchild1=0';
 
-/** Same as server LANGUAGE_HOSTS — used if /api/health has no languageHosts yet. */
-const FALLBACK_LANGUAGE_HOSTS = {
-  ENG: 'www.lhw.com',
-  GER: 'de.lhw.com',
-  ITA: 'it.lhw.com',
-  FRE: 'fr.lhw.com',
-  JAP: 'jp.lhw.com',
-  SPA: 'es.lhw.com',
+const LANGUAGE_LABELS = {
+  ENG: 'English',
+  GER: 'German',
+  ITA: 'Italian',
+  FRE: 'French',
+  JAP: 'Japanese',
+  SPA: 'Spanish',
 };
 
 /** Filled from GET /api/health */
-let languageHosts = { ...FALLBACK_LANGUAGE_HOSTS };
 let serverDefaultUrl = DEFAULT_PAGE_URL;
 
 const form = document.getElementById('run-form');
 const fileInput = document.getElementById('file');
-const languageInput = document.getElementById('language');
 const pageUrlInput = document.getElementById('pageUrl');
 const runBtn = document.getElementById('run-btn');
 const statusEl = document.getElementById('status');
-const resultsBody = document.getElementById('results-body');
+const resultsContainer = document.getElementById('results-container');
 const propertyOverviewSpecialSection = document.getElementById('property-overview-special-section');
 const propertyOverviewSpecialIntro = document.getElementById('property-overview-special-intro');
 const propertyOverviewSpecialPreviewEl = document.getElementById('property-overview-special-preview');
@@ -36,54 +33,10 @@ const specialNoticeSection = document.getElementById('special-notice-section');
 const specialNoticeIntro = document.getElementById('special-notice-intro');
 const specialNoticePreviewEl = document.getElementById('special-notice-preview');
 
-/**
- * Keep path + query; only swap the hostname to match the selected language (www, de, it, …).
- * @param {string} urlString
- * @param {string} langCode ENG | GER | ...
- * @returns {string}
- */
-function buildUrlWithLanguageHost(urlString, langCode) {
-  const host = languageHosts[langCode];
-  if (!host) {
-    return urlString;
-  }
-  try {
-    const u = new URL(urlString.trim() || serverDefaultUrl);
-    if (!u.hostname.toLowerCase().endsWith('lhw.com')) {
-      return urlString;
-    }
-    u.hostname = host;
-    return u.toString();
-  } catch {
-    return urlString;
-  }
-}
-
-document.querySelectorAll('.lang-btn').forEach((btn) => {
-  btn.addEventListener('click', () => {
-    const lang = btn.getAttribute('data-lang');
-    languageInput.value = lang;
-    document.querySelectorAll('.lang-btn').forEach((b) => b.classList.remove('active'));
-    btn.classList.add('active');
-
-    // Only rewrite the host when the user already entered a URL (default field stays empty).
-    const base = pageUrlInput.value.trim();
-    if (base) {
-      pageUrlInput.value = buildUrlWithLanguageHost(base, lang);
-    }
-  });
-});
-
-// Default selection: ENG
-document.querySelector('.lang-btn[data-lang="ENG"]')?.classList.add('active');
-
 async function loadDefaultUrlHint() {
   try {
     const res = await fetch('/api/health');
     const data = await res.json();
-    if (data.languageHosts && typeof data.languageHosts === 'object') {
-      languageHosts = { ...FALLBACK_LANGUAGE_HOSTS, ...data.languageHosts };
-    }
     if (data.defaultUrl) {
       serverDefaultUrl = data.defaultUrl;
       // Hint only — input stays empty until the user pastes a link (server uses default if still empty).
@@ -113,30 +66,222 @@ function statusClassForRow(status) {
   return 'warn';
 }
 
-function renderResults(rows) {
-  resultsBody.innerHTML = '';
-  if (!rows || !rows.length) {
-    const tr = document.createElement('tr');
-    tr.className = 'placeholder';
-    tr.innerHTML = '<td colspan="7">No rows returned.</td>';
-    resultsBody.appendChild(tr);
+function countStatuses(rows) {
+  return (rows || []).reduce(
+    (acc, row) => {
+      const status = String(row.status || '').toLowerCase();
+      if (status === 'passed') acc.passed += 1;
+      else if (status === 'failed') acc.failed += 1;
+      else if (status === 'skipped') acc.skipped += 1;
+      else acc.other += 1;
+      return acc;
+    },
+    { passed: 0, failed: 0, skipped: 0, other: 0 },
+  );
+}
+
+function languageTitle(code) {
+  const label = LANGUAGE_LABELS[code] || code;
+  return `${label} (${code})`;
+}
+
+function renderLanguageRun(run, index) {
+  const rows = run.results || [];
+  const counts = countStatuses(rows);
+  const details = document.createElement('details');
+  details.className = 'language-section';
+  details.open = index === 0 || counts.failed > 0 || Boolean(run.error);
+
+  const summary = document.createElement('summary');
+  summary.innerHTML = `
+    <span class="language-title">${escapeHtml(languageTitle(run.language || ''))}</span>
+    <span class="language-summary">
+      ${rows.length} row(s) ·
+      <span class="pass">${counts.passed} passed</span> ·
+      <span class="fail">${counts.failed} failed</span> ·
+      <span class="warn">${counts.skipped + counts.other} skipped/other</span>
+    </span>
+  `;
+  details.appendChild(summary);
+
+  const body = document.createElement('div');
+  body.className = 'language-section-body';
+  const runUrl = run.pageUrl ? `<p class="hint">URL: ${escapeHtml(run.pageUrl)}</p>` : '';
+  const error = run.error ? `<p class="run-error">${escapeHtml(run.error)}</p>` : '';
+  const rowsHtml = rows.length
+    ? rows
+        .map((r) => {
+          const st = r.status || '';
+          return `
+            <tr>
+              <td>${escapeHtml(r.hotelName || '')}</td>
+              <td>${escapeHtml(r.section || '')}</td>
+              <td>${escapeHtml(r.expectedText || '')}</td>
+              <td>${escapeHtml(r.actualText || '')}</td>
+              <td class="${statusClassForRow(st)}">${escapeHtml(st)}</td>
+              <td class="muted">${escapeHtml(r.note || '')}</td>
+            </tr>
+          `;
+        })
+        .join('')
+    : '<tr class="placeholder"><td colspan="6">No rows returned for this language.</td></tr>';
+
+  body.innerHTML = `
+    ${runUrl}
+    ${error}
+    <div class="table-wrap">
+      <table class="results-table">
+        <thead>
+          <tr>
+            <th>Hotel</th>
+            <th>Section / Label</th>
+            <th>Expected (Excel)</th>
+            <th>Actual (site)</th>
+            <th>Status</th>
+            <th>Note</th>
+          </tr>
+        </thead>
+        <tbody>${rowsHtml}</tbody>
+      </table>
+    </div>
+  `;
+  details.appendChild(body);
+  resultsContainer.appendChild(details);
+}
+
+function renderLanguageRuns(languageRuns) {
+  resultsContainer.innerHTML = '';
+  if (!languageRuns || !languageRuns.length) {
+    resultsContainer.innerHTML = '<p class="placeholder">No language results returned.</p>';
     return;
   }
 
-  for (const r of rows) {
-    const tr = document.createElement('tr');
-    const st = r.status || '';
-    tr.innerHTML = `
-      <td>${escapeHtml(r.hotelName || '')}</td>
-      <td>${escapeHtml(r.section || '')}</td>
-      <td>${escapeHtml(r.language || '')}</td>
-      <td>${escapeHtml(r.expectedText || '')}</td>
-      <td>${escapeHtml(r.actualText || '')}</td>
-      <td class="${statusClassForRow(st)}">${escapeHtml(st)}</td>
-      <td class="muted">${escapeHtml(r.note || '')}</td>
-    `;
-    resultsBody.appendChild(tr);
+  languageRuns.forEach((run, index) => {
+    renderLanguageRun(run, index);
+  });
+}
+
+function clearRunOutput() {
+  resultsContainer.innerHTML = '';
+  renderPropertyOverviewSpecialMeta(null);
+  renderMessageBannerMeta(null);
+  renderSpecialNoticeMessage(null);
+}
+
+function renderErrorResult(message) {
+  renderLanguageRuns([
+    {
+      language: 'ERR',
+      error: message,
+      results: [
+        {
+          hotelName: '',
+          section: '(client or server error)',
+          expectedText: '',
+          actualText: '',
+          status: 'Failed',
+          note: message,
+        },
+      ],
+    },
+  ]);
+}
+
+async function readRunStream(res) {
+  if (!res.body) {
+    const data = await res.json();
+    const languageRuns = data.languageRuns || [];
+    renderLanguageRuns(languageRuns);
+    return {
+      pageUrl: data.pageUrl || '',
+      languageCount: languageRuns.length,
+      totalRows: Array.isArray(data.results)
+        ? data.results.length
+        : languageRuns.reduce((sum, run) => sum + (run.results?.length || 0), 0),
+    };
   }
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  let pageUrl = '';
+  let expectedLanguages = 0;
+  let completedLanguages = 0;
+  let totalRows = 0;
+  let abortedMessage = '';
+
+  const handleEvent = (event) => {
+    if (!event || typeof event !== 'object') {
+      return;
+    }
+    if (event.type === 'start') {
+      pageUrl = event.pageUrl || '';
+      expectedLanguages = Array.isArray(event.languages) ? event.languages.length : 0;
+      statusEl.textContent = `Running all languages… 0/${expectedLanguages || '?'} complete.`;
+      return;
+    }
+    if (event.type === 'language') {
+      const run = event.run || {};
+      renderLanguageRun(run, completedLanguages);
+      completedLanguages += 1;
+      totalRows += (run.results || []).length;
+      statusEl.textContent = `Running all languages… ${completedLanguages}/${expectedLanguages || '?'} complete.`;
+      return;
+    }
+    if (event.type === 'done') {
+      pageUrl = event.pageUrl || pageUrl;
+      expectedLanguages = Array.isArray(event.languages) ? event.languages.length : expectedLanguages;
+      if (typeof event.totalRows === 'number') {
+        totalRows = event.totalRows;
+      }
+      if (event.aborted && event.error) {
+        abortedMessage = event.error;
+      }
+      return;
+    }
+    if (event.type === 'baselineError') {
+      abortedMessage =
+        event.error ||
+        'English copy in the uploaded file does not match the live site. Please update the English content before checking other languages.';
+      resultsContainer.innerHTML = '';
+      const message = document.createElement('p');
+      message.className = 'run-error';
+      message.textContent = abortedMessage;
+      resultsContainer.appendChild(message);
+      statusEl.textContent = abortedMessage;
+      return;
+    }
+    if (event.type === 'error') {
+      throw new Error(event.error || 'Run failed.');
+    }
+  };
+
+  while (true) {
+    const { value, done } = await reader.read();
+    buffer += decoder.decode(value || new Uint8Array(), { stream: !done });
+    const lines = buffer.split('\n');
+    buffer = lines.pop() || '';
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (trimmed) {
+        handleEvent(JSON.parse(trimmed));
+      }
+    }
+    if (done) {
+      break;
+    }
+  }
+
+  if (buffer.trim()) {
+    handleEvent(JSON.parse(buffer.trim()));
+  }
+
+  return {
+    pageUrl,
+    languageCount: completedLanguages,
+    totalRows,
+    abortedMessage,
+  };
 }
 
 function escapeHtml(str) {
@@ -218,16 +363,12 @@ function renderMessageBannerMeta(mm) {
 
 form.addEventListener('submit', async (e) => {
   e.preventDefault();
-  resultsBody.innerHTML = '';
-  renderPropertyOverviewSpecialMeta(null);
-  renderMessageBannerMeta(null);
-  renderSpecialNoticeMessage(null);
-  statusEl.textContent = 'Running Playwright… this may take a minute.';
+  clearRunOutput();
+  statusEl.textContent = 'Running Playwright for all languages… this may take several minutes.';
   runBtn.disabled = true;
 
   const fd = new FormData();
   fd.append('file', fileInput.files[0]);
-  fd.append('language', languageInput.value);
   // Empty = server applies DEFAULT_LHW_URL (see server.js).
   fd.append('pageUrl', pageUrlInput.value.trim());
 
@@ -236,40 +377,26 @@ form.addEventListener('submit', async (e) => {
       method: 'POST',
       body: fd,
     });
-    const data = await res.json();
     if (!res.ok) {
-      throw new Error(data.error || `Request failed (${res.status})`);
+      let message = `Request failed (${res.status})`;
+      try {
+        const data = await res.json();
+        message = data.error || message;
+      } catch {
+        // Keep the generic HTTP error.
+      }
+      throw new Error(message);
     }
-    renderResults(data.results);
-    renderPropertyOverviewSpecialMeta(data.propertyOverviewSpecialMeta ?? null);
-    renderMessageBannerMeta(data.messageBannerMeta ?? null);
-    renderSpecialNoticeMessage(data.specialNoticeMessage ?? null);
-    let statusMsg = `Done — ${data.results.length} row(s). URL used: ${data.pageUrl}`;
-    const rows = data.results || [];
-    const allSkipped =
-      rows.length > 0 && rows.every((r) => String(r.status || '') === 'Skipped');
-    if (allSkipped) {
-      statusMsg +=
-        ' Every row was skipped: fill the worksheet column for the language you selected (same codes as Excel: ENG, GER, …, SPA=Spanish).';
-    }
-    statusEl.textContent = statusMsg;
+    const summary = await readRunStream(res);
+    statusEl.textContent = summary.abortedMessage
+      ? summary.abortedMessage
+      : `Done — ${summary.languageCount} language(s), ${summary.totalRows} total row(s). Base URL: ${summary.pageUrl}`;
   } catch (err) {
     console.error(err);
     const msg = err instanceof Error ? err.message : String(err);
     statusEl.textContent = msg;
-    renderPropertyOverviewSpecialMeta(null);
-    renderSpecialNoticeMessage(null);
-    renderResults([
-      {
-        hotelName: '',
-        section: '(client or server error)',
-        language: languageInput.value,
-        expectedText: '',
-        actualText: '',
-        status: 'Failed',
-        note: msg,
-      },
-    ]);
+    clearRunOutput();
+    renderErrorResult(msg);
   } finally {
     runBtn.disabled = false;
   }
