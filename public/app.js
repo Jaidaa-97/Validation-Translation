@@ -218,6 +218,10 @@ function renderMessageBannerMeta(mm) {
 
 form.addEventListener('submit', async (e) => {
   e.preventDefault();
+  resultsBody.innerHTML = '';
+  renderPropertyOverviewSpecialMeta(null);
+  renderMessageBannerMeta(null);
+  renderSpecialNoticeMessage(null);
   statusEl.textContent = 'Running Playwright… this may take a minute.';
   runBtn.disabled = true;
 
