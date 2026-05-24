@@ -11,7 +11,13 @@ const http = require('http');
 const { exec } = require('child_process');
 const express = require('express');
 const multer = require('multer');
-const { runComparison, closeActiveRunBrowser, isRunCancelledError } = require('./lib/playwrightRunner');
+const {
+  runComparison,
+  launchRunBrowser,
+  setActiveRunBrowser,
+  closeActiveRunBrowser,
+  isRunCancelledError,
+} = require('./lib/playwrightRunner');
 const { buildUrlForLanguage, LANGUAGE_HOSTS } = require('./lib/changeLanguage');
 const { isFeatureSectionLabel } = require('./lib/featuresComparison');
 
@@ -324,6 +330,16 @@ app.post('/api/run', upload.single('file'), async (req, res) => {
       return parts.join(', ');
     };
 
+    /** @type {import('playwright').Browser | null} */
+    let batchBrowser = null;
+    if (languages.length > 0) {
+      batchBrowser = await launchRunBrowser(headless);
+      setActiveRunBrowser(batchBrowser);
+      // eslint-disable-next-line no-console
+      console.log('[Server] Reusing one browser for all languages in this run.');
+    }
+
+    try {
     for (const language of languages) {
       if (shouldStopRun()) {
         break;
@@ -344,6 +360,7 @@ app.post('/api/run', upload.single('file'), async (req, res) => {
           languageCode: language,
           pageUrl,
           headless,
+          sharedBrowser: batchBrowser || undefined,
           shouldAbort: shouldStopRun,
         });
         languageRun = {
@@ -445,6 +462,12 @@ app.post('/api/run', upload.single('file'), async (req, res) => {
       elapsedMs: Date.now() - startedAtMs,
     });
     res.end();
+    } finally {
+      if (batchBrowser) {
+        await closeActiveRunBrowser().catch(() => {});
+        batchBrowser = null;
+      }
+    }
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     if (res.headersSent) {
