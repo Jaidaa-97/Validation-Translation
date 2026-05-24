@@ -21,7 +21,7 @@ const ALL_LANGUAGE_ORDER = ['ENG', 'GER', 'ITA', 'FRE', 'JAP', 'SPA'];
  * @param {unknown} raw
  * @returns {string[]}
  */
-function parseSkipLanguages(raw) {
+function parseLanguageCodeList(raw) {
   if (!raw) {
     return [];
   }
@@ -49,6 +49,33 @@ function parseSkipLanguages(raw) {
     out.push(code);
   }
   return out;
+}
+
+/** @param {string[]} codes */
+function orderLanguageCodes(codes) {
+  const set = new Set(codes);
+  return ALL_LANGUAGE_ORDER.filter((code) => set.has(code));
+}
+
+/**
+ * @param {import('express').Request['body']} body
+ * @returns {string[]}
+ */
+function parseRequestedLanguages(body) {
+  const fromList = parseLanguageCodeList(body.languages);
+  if (fromList.length) {
+    return orderLanguageCodes(fromList);
+  }
+  const requested = String(body.language || '')
+    .trim()
+    .toUpperCase();
+  if (!requested || requested === 'ALL') {
+    return ALL_LANGUAGE_ORDER.filter((code) => LANGUAGE_HOSTS[code]);
+  }
+  if (LANGUAGE_HOSTS[requested]) {
+    return [requested];
+  }
+  return ALL_LANGUAGE_ORDER.filter((code) => LANGUAGE_HOSTS[code]);
 }
 
 /** Default hotel page from your brief — override in the form or with DEFAULT_LHW_URL. */
@@ -142,6 +169,8 @@ app.get('/api/health', (_req, res) => {
  * POST multipart form:
  * - file: Excel workbook
  * - pageUrl: optional full URL to open
+ * - languages: optional JSON array of locale codes to run (e.g. ["ENG","GER","JAP"])
+ * - language: legacy single code or ALL (used when languages is omitted)
  * - skipLanguages: optional JSON array of locale codes already completed (resume after Stop)
  *
  * Runs every configured LHW language and streams one result group as soon as it is ready.
@@ -163,9 +192,6 @@ app.post('/api/run', upload.single('file'), async (req, res) => {
       return res.status(400).json({ error: 'Missing file field "file".' });
     }
 
-    const requestedLanguage = String(req.body.language || '')
-      .trim()
-      .toUpperCase();
     const rawUrl = String(req.body.pageUrl || '').trim() || DEFAULT_LHW_URL;
     let basePageUrl;
     try {
@@ -176,10 +202,13 @@ app.post('/api/run', upload.single('file'), async (req, res) => {
     }
 
     const headless = String(process.env.HEADLESS || 'true').toLowerCase() !== 'false';
-    const allLanguages = requestedLanguage && LANGUAGE_HOSTS[requestedLanguage]
-      ? [requestedLanguage]
-      : ALL_LANGUAGE_ORDER.filter((code) => LANGUAGE_HOSTS[code]);
-    const skipLanguages = parseSkipLanguages(req.body.skipLanguages);
+    const allLanguages = parseRequestedLanguages(req.body);
+    if (!allLanguages.length) {
+      activeHttpRun = null;
+      fs.promises.unlink(req.file.path).catch(() => {});
+      return res.status(400).json({ error: 'No valid languages selected.' });
+    }
+    const skipLanguages = parseLanguageCodeList(req.body.skipLanguages);
     const skipSet = new Set(skipLanguages);
     const languages = allLanguages.filter((code) => !skipSet.has(code));
     if (!languages.length) {

@@ -24,19 +24,19 @@
         </div>
 
         <div class="field">
-          <label>Site language (LHW locale)</label>
-          <div class="lang-buttons" role="group" aria-label="LHW site language">
-            <button type="button" class="lang-btn" data-lang="ALL">ALL</button>
-            <button type="button" class="lang-btn" data-lang="ENG">ENG</button>
-            <button type="button" class="lang-btn" data-lang="GER">GER</button>
-            <button type="button" class="lang-btn" data-lang="ITA">ITA</button>
-            <button type="button" class="lang-btn" data-lang="FRE">FRE</button>
-            <button type="button" class="lang-btn" data-lang="JAP">JAP</button>
-            <button type="button" class="lang-btn" data-lang="SPA" title="Spanish — opens es.lhw.com (not hotel spa)">
+          <label>Site languages (LHW locales)</label>
+          <div class="lang-buttons" role="group" aria-label="LHW site languages">
+            <button type="button" class="lang-btn lang-btn-all" data-lang="ALL" title="Select all languages">ALL</button>
+            <button type="button" class="lang-btn" data-lang="ENG" aria-pressed="true">ENG</button>
+            <button type="button" class="lang-btn" data-lang="GER" aria-pressed="false">GER</button>
+            <button type="button" class="lang-btn" data-lang="ITA" aria-pressed="false">ITA</button>
+            <button type="button" class="lang-btn" data-lang="FRE" aria-pressed="false">FRE</button>
+            <button type="button" class="lang-btn" data-lang="JAP" aria-pressed="false">JAP</button>
+            <button type="button" class="lang-btn" data-lang="SPA" aria-pressed="false" title="Spanish — opens es.lhw.com (not hotel spa)">
               ESP
             </button>
           </div>
-          <input type="hidden" name="language" id="language" value="ENG" />
+          <p id="lang-selection-summary" class="hint hint-compact">Selected: English (ENG)</p>
         </div>
 
         <div class="field">
@@ -48,9 +48,9 @@
             placeholder="Paste a full lhw.com hotel link, or leave empty for server default"
           />
           <p class="hint hint-compact">
-            Select <strong>ALL</strong> to check every language, or choose one locale. Language buttons
-            only change the host (<code>www</code>, <code>de</code>, <code>jp</code>, …); your path
-            and query stay the same.
+            Click <strong>ALL</strong> for every locale, or click individual languages to toggle them
+            (e.g. ENG + GER + JAP). With exactly one language selected, the URL host updates to match
+            (<code>www</code>, <code>de</code>, <code>jp</code>, …); path and query stay the same.
           </p>
           <details class="help-details">
             <summary>How column A labels are matched on the site (click to expand)</summary>
@@ -62,7 +62,8 @@
               <ul class="help-list">
                 <li>
                   <strong>Dining &amp; restaurants</strong> — Labels mentioning restaurant, dining, etc. open
-                  <code>…/services-amenities/dining</code> and compare restaurant copy.
+                  <code>…/services-amenities/dining</code>. Each outlet is matched by <strong>name</strong> and Excel
+                  copy (not by its position on the page), including hours and descriptions.
                 </li>
                 <li>
                   <strong>Spa &amp; wellness</strong> — Labels like Spa, Wellness, or Spa Description open

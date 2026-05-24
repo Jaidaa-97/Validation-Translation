@@ -34,8 +34,9 @@ let serverDefaultUrl = DEFAULT_PAGE_URL;
 
 const form = document.getElementById('run-form');
 const fileInput = document.getElementById('file');
-const languageInput = document.getElementById('language');
+const langSelectionSummary = document.getElementById('lang-selection-summary');
 const pageUrlInput = document.getElementById('pageUrl');
+const allLangBtn = document.querySelector('.lang-btn[data-lang="ALL"]');
 const runBtn = document.getElementById('run-btn');
 const stopBtn = document.getElementById('stop-btn');
 const statusEl = document.getElementById('status');
@@ -58,10 +59,112 @@ let runSessionId = 0;
 let runProgressTimer = null;
 
 /**
- * After Stop on an ALL run, the next Run resumes languages already finished.
- * @type {{ fileKey: string, pageUrl: string, languageMode: string, stoppedPartially: boolean, completedRuns: object[] } | null}
+ * After Stop on a multi-language run, the next Run resumes locales already finished.
+ * @type {{ fileKey: string, pageUrl: string, plannedLanguages: string[], stoppedPartially: boolean, completedRuns: object[] } | null}
  */
 let runResumeState = null;
+
+/** @returns {string[]} */
+function getSelectedLanguages() {
+  const selected = [];
+  for (const code of ALL_LANGUAGE_ORDER) {
+    const btn = document.querySelector(`.lang-btn[data-lang="${code}"]`);
+    if (btn?.classList.contains('selected')) {
+      selected.push(code);
+    }
+  }
+  return selected;
+}
+
+/** @param {string[]} codes */
+function setSelectedLanguages(codes) {
+  const set = new Set(codes);
+  for (const code of ALL_LANGUAGE_ORDER) {
+    const btn = document.querySelector(`.lang-btn[data-lang="${code}"]`);
+    if (btn) {
+      const on = set.has(code);
+      btn.classList.toggle('selected', on);
+      btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+    }
+  }
+  syncAllLanguageButton();
+}
+
+function syncAllLanguageButton() {
+  const selected = getSelectedLanguages();
+  const allOn = selected.length === ALL_LANGUAGE_ORDER.length;
+  if (allLangBtn) {
+    allLangBtn.classList.toggle('active', allOn);
+    allLangBtn.setAttribute('aria-pressed', allOn ? 'true' : 'false');
+  }
+}
+
+function updateUrlHostForSingleSelection() {
+  const selected = getSelectedLanguages();
+  const base = pageUrlInput.value.trim();
+  if (base && selected.length === 1) {
+    pageUrlInput.value = buildUrlWithLanguageHost(base, selected[0]);
+  }
+}
+
+function updateLangSelectionSummary() {
+  if (!langSelectionSummary) {
+    return;
+  }
+  const selected = getSelectedLanguages();
+  if (!selected.length) {
+    langSelectionSummary.textContent = 'Selected: (none — pick at least one language)';
+    return;
+  }
+  if (selected.length === ALL_LANGUAGE_ORDER.length) {
+    langSelectionSummary.textContent = 'Selected: all languages (ENG, GER, ITA, FRE, JAP, SPA)';
+    return;
+  }
+  if (selected.length === 1) {
+    langSelectionSummary.textContent = `Selected: ${languageTitle(selected[0])}`;
+    return;
+  }
+  langSelectionSummary.textContent = `Selected: ${selected.map((c) => languageTitle(c)).join(', ')}`;
+}
+
+/** @param {string[] | undefined} a @param {string[] | undefined} b */
+function plannedLanguagesMatch(a, b) {
+  if (!a?.length || !b?.length || a.length !== b.length) {
+    return false;
+  }
+  return a.every((code, index) => code === b[index]);
+}
+
+function onLanguageSelectionChanged() {
+  if (runResumeState && !plannedLanguagesMatch(runResumeState.plannedLanguages, getSelectedLanguages())) {
+    resetRunResumeState();
+  }
+  updateLangSelectionSummary();
+  updateRunButtonLabel();
+}
+
+function selectAllLanguages() {
+  setSelectedLanguages(ALL_LANGUAGE_ORDER);
+  onLanguageSelectionChanged();
+}
+
+/** @param {string} langCode */
+function toggleLocaleLanguage(langCode) {
+  const btn = document.querySelector(`.lang-btn[data-lang="${langCode}"]`);
+  if (!btn) {
+    return;
+  }
+  const selected = getSelectedLanguages();
+  const isOn = btn.classList.contains('selected');
+  if (isOn && selected.length <= 1) {
+    return;
+  }
+  btn.classList.toggle('selected', !isOn);
+  btn.setAttribute('aria-pressed', !isOn ? 'true' : 'false');
+  syncAllLanguageButton();
+  updateUrlHostForSingleSelection();
+  onLanguageSelectionChanged();
+}
 
 /** @param {File | undefined | null} file */
 function workbookKey(file) {
@@ -80,7 +183,7 @@ function initRunResumeState() {
   runResumeState = {
     fileKey: workbookKey(fileInput.files[0]),
     pageUrl: pageUrlInput.value.trim(),
-    languageMode: languageInput.value,
+    plannedLanguages: getSelectedLanguages(),
     stoppedPartially: false,
     completedRuns: [],
   };
@@ -90,7 +193,7 @@ function initRunResumeState() {
 /** @param {object} run */
 function recordCompletedLanguageRun(run) {
   const code = String(run?.language || '').trim();
-  if (!code || !runResumeState || runResumeState.languageMode !== 'ALL') {
+  if (!code || !runResumeState || runResumeState.plannedLanguages.length < 2) {
     return;
   }
   const snapshot = {
@@ -110,11 +213,11 @@ function recordCompletedLanguageRun(run) {
   }
 }
 
-function canResumeAllLanguageRun() {
-  if (!runResumeState?.stoppedPartially || runResumeState.languageMode !== 'ALL') {
+function canResumeLanguageRun() {
+  if (!runResumeState?.stoppedPartially) {
     return false;
   }
-  if (languageInput.value !== 'ALL') {
+  if (!plannedLanguagesMatch(runResumeState.plannedLanguages, getSelectedLanguages())) {
     return false;
   }
   if (workbookKey(fileInput.files[0]) !== runResumeState.fileKey) {
@@ -123,8 +226,9 @@ function canResumeAllLanguageRun() {
   if (pageUrlInput.value.trim() !== runResumeState.pageUrl) {
     return false;
   }
+  const planned = runResumeState.plannedLanguages.length;
   const done = runResumeState.completedRuns.length;
-  return done > 0 && done < ALL_LANGUAGE_ORDER.length;
+  return planned > 1 && done > 0 && done < planned;
 }
 
 function skipLanguagesForResume() {
@@ -132,7 +236,7 @@ function skipLanguagesForResume() {
 }
 
 function markRunStoppedPartially() {
-  if (runResumeState?.languageMode === 'ALL' && runResumeState.completedRuns.length > 0) {
+  if (runResumeState?.plannedLanguages?.length > 1 && runResumeState.completedRuns.length > 0) {
     runResumeState.stoppedPartially = true;
     updateRunButtonLabel();
   }
@@ -153,7 +257,7 @@ function updateRunButtonLabel() {
   if (!runBtn) {
     return;
   }
-  runBtn.textContent = canResumeAllLanguageRun() ? 'Resume remaining languages' : 'Run / Compare';
+  runBtn.textContent = canResumeLanguageRun() ? 'Resume remaining languages' : 'Run / Compare';
 }
 
 /**
@@ -182,24 +286,16 @@ function buildUrlWithLanguageHost(urlString, langCode) {
 document.querySelectorAll('.lang-btn').forEach((btn) => {
   btn.addEventListener('click', () => {
     const lang = btn.getAttribute('data-lang');
-    if (runResumeState && lang !== runResumeState.languageMode) {
-      resetRunResumeState();
+    if (lang === 'ALL') {
+      selectAllLanguages();
+      return;
     }
-    languageInput.value = lang;
-    document.querySelectorAll('.lang-btn').forEach((b) => b.classList.remove('active'));
-    btn.classList.add('active');
-
-    // Only rewrite the host when the user already entered a URL (default field stays empty).
-    const base = pageUrlInput.value.trim();
-    if (base && lang !== 'ALL') {
-      pageUrlInput.value = buildUrlWithLanguageHost(base, lang);
-    }
-    updateRunButtonLabel();
+    toggleLocaleLanguage(lang);
   });
 });
 
-// Default selection: ENG
-document.querySelector('.lang-btn[data-lang="ENG"]')?.classList.add('active');
+setSelectedLanguages(['ENG']);
+updateLangSelectionSummary();
 
 async function loadDefaultUrlHint() {
   try {
@@ -274,11 +370,27 @@ function formatDuration(ms) {
 }
 
 function runProgressLabel(expectedLanguages) {
-  return expectedLanguages === 1 ? 'Running selected language' : 'Running all languages';
+  if (expectedLanguages === 1) {
+    return 'Running selected language';
+  }
+  if (expectedLanguages === ALL_LANGUAGE_ORDER.length) {
+    return 'Running all languages';
+  }
+  return `Running ${expectedLanguages} selected languages`;
 }
 
 function selectedRunLabel() {
-  return languageInput.value === 'ALL' ? 'all languages' : languageInput.value || 'selected language';
+  const selected = getSelectedLanguages();
+  if (!selected.length) {
+    return 'selected languages';
+  }
+  if (selected.length === ALL_LANGUAGE_ORDER.length) {
+    return 'all languages';
+  }
+  if (selected.length === 1) {
+    return selected[0];
+  }
+  return `${selected.length} languages (${selected.join(', ')})`;
 }
 
 function progressStatus(expectedLanguages, completedLanguages, elapsedMs, currentLanguage = '') {
@@ -808,7 +920,13 @@ form.addEventListener('submit', async (e) => {
   }
   runSessionId += 1;
   const sessionId = runSessionId;
-  const resuming = canResumeAllLanguageRun();
+  const selectedLanguages = getSelectedLanguages();
+  if (!selectedLanguages.length) {
+    statusEl.textContent = 'Select at least one language (click locale buttons, or ALL for every language).';
+    return;
+  }
+
+  const resuming = canResumeLanguageRun();
   if (!resuming) {
     clearRunOutput();
     initRunResumeState();
@@ -825,7 +943,7 @@ form.addEventListener('submit', async (e) => {
 
   const fd = new FormData();
   fd.append('file', fileInput.files[0]);
-  fd.append('language', languageInput.value);
+  fd.append('languages', JSON.stringify(selectedLanguages));
   // Empty = server applies DEFAULT_LHW_URL (see server.js).
   fd.append('pageUrl', pageUrlInput.value.trim());
   if (skipList.length) {

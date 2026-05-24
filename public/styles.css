@@ -128,10 +128,16 @@ input[type='url'] {
   font-weight: 600;
 }
 
+.lang-btn.selected,
 .lang-btn.active {
   background: #2563eb;
   color: #fff;
   border-color: #1d4ed8;
+}
+
+.lang-btn-all.active {
+  background: #1e40af;
+  border-color: #1e3a8a;
 }
 
 .actions {
