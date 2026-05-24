@@ -105,11 +105,15 @@ app.post('/api/run', upload.single('file'), async (req, res) => {
     }
 
     const headless = String(process.env.HEADLESS || 'true').toLowerCase() !== 'false';
+    const ALL_LANGUAGE_ORDER = ['ENG', 'GER', 'ITA', 'FRE', 'JAP', 'SPA'];
     const languages = requestedLanguage && LANGUAGE_HOSTS[requestedLanguage]
       ? [requestedLanguage]
-      : Object.keys(LANGUAGE_HOSTS);
+      : ALL_LANGUAGE_ORDER.filter((code) => LANGUAGE_HOSTS[code]);
+    const strictEnglishBaseline =
+      String(process.env.ENG_BASELINE_STRICT || '').toLowerCase() === 'true';
     const languageRuns = [];
     let abortedMessage = '';
+    let baselineWarning = '';
     const startedAtMs = Date.now();
 
     res.setHeader('Content-Type', 'application/x-ndjson; charset=utf-8');
@@ -128,18 +132,60 @@ app.post('/api/run', upload.single('file'), async (req, res) => {
       startedAtMs,
     });
 
-    const englishBaselineFailed = (run) => {
+    const isBaselineContentRow = (row) => {
+      const section = String(row.section || '').replace(/^Hotel Features\s*→\s*/i, '');
+      if (!section || section.startsWith('(')) {
+        return false;
+      }
+      return !isFeatureSectionLabel(section);
+    };
+
+    /** Hard stop: run error or row-level Failed (not mere copy mismatch). */
+    const englishBaselineHardFailed = (run) => {
+      if (run?.error) {
+        return true;
+      }
       const rows = run?.results || [];
-      return (
-        Boolean(run?.error) ||
-        rows.some((row) => {
-          const section = String(row.section || '').replace(/^Hotel Features\s*→\s*/i, '');
-          if (isFeatureSectionLabel(section)) {
-            return false;
-          }
-          return String(row.status || '').toLowerCase() !== 'passed';
-        })
+      return rows.some((row) => {
+        if (!isBaselineContentRow(row)) {
+          return false;
+        }
+        return String(row.status || '').toLowerCase() === 'failed';
+      });
+    };
+
+    /** Strict mode (ENG_BASELINE_STRICT=true): any non-pass content row aborts other languages. */
+    const englishBaselineStrictFailed = (run) => {
+      if (englishBaselineHardFailed(run)) {
+        return true;
+      }
+      const rows = run?.results || [];
+      return rows.some((row) => {
+        if (!isBaselineContentRow(row)) {
+          return false;
+        }
+        const status = String(row.status || '').toLowerCase();
+        return status !== 'passed' && status !== 'skipped';
+      });
+    };
+
+    const englishBaselineMismatchSummary = (run) => {
+      const rows = (run?.results || []).filter(isBaselineContentRow);
+      const notFound = rows.filter(
+        (row) => String(row.status || '').toLowerCase() === 'not found',
       );
+      const failed = rows.filter((row) => String(row.status || '').toLowerCase() === 'failed');
+      if (!notFound.length && !failed.length) {
+        return '';
+      }
+      const parts = [];
+      if (notFound.length) {
+        parts.push(`${notFound.length} Not Found`);
+      }
+      if (failed.length) {
+        parts.push(`${failed.length} Failed`);
+      }
+      return parts.join(', ');
     };
 
     for (const language of languages) {
@@ -193,15 +239,44 @@ app.post('/api/run', upload.single('file'), async (req, res) => {
         durationMs,
         elapsedMs: Date.now() - startedAtMs,
       });
-      if (languages.length > 1 && language === 'ENG' && englishBaselineFailed(languageRun)) {
-        abortedMessage =
-          'English copy in the uploaded file does not match the live site. Please update the English content before checking other languages.';
-        writeEvent({
-          type: 'baselineError',
-          error: abortedMessage,
-          elapsedMs: Date.now() - startedAtMs,
-        });
-        break;
+      if (languages.length > 1 && language === 'ENG') {
+        const mismatchSummary = englishBaselineMismatchSummary(languageRun);
+        const hardFailed = englishBaselineHardFailed(languageRun);
+        const strictFailed = strictEnglishBaseline && englishBaselineStrictFailed(languageRun);
+
+        if (hardFailed) {
+          abortedMessage =
+            'English validation hit a run error or failed row(s). Fix those issues before checking other languages.';
+          writeEvent({
+            type: 'baselineError',
+            error: abortedMessage,
+            mismatchSummary,
+            elapsedMs: Date.now() - startedAtMs,
+          });
+          break;
+        }
+
+        if (strictFailed) {
+          abortedMessage =
+            'English copy in the uploaded file does not match the live site. Please update the English content before checking other languages.';
+          writeEvent({
+            type: 'baselineError',
+            error: abortedMessage,
+            mismatchSummary,
+            elapsedMs: Date.now() - startedAtMs,
+          });
+          break;
+        }
+
+        if (mismatchSummary) {
+          baselineWarning = `English check: ${mismatchSummary} on www.lhw.com. Other languages will still run — review the ENG section in the results.`;
+          writeEvent({
+            type: 'baselineWarning',
+            warning: baselineWarning,
+            mismatchSummary,
+            elapsedMs: Date.now() - startedAtMs,
+          });
+        }
       }
     }
 
@@ -216,6 +291,7 @@ app.post('/api/run', upload.single('file'), async (req, res) => {
       totalRows: results.length,
       aborted: Boolean(abortedMessage),
       error: abortedMessage,
+      baselineWarning,
       elapsedMs: Date.now() - startedAtMs,
     });
     res.end();

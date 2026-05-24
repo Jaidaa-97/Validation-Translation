@@ -34,7 +34,7 @@ body {
 .dining-preview {
   margin: 0.75rem 0 0;
   padding: 1rem;
-  max-height: 22rem;
+  max-height: 36rem;
   overflow: auto;
   font-size: 0.85rem;
   line-height: 1.45;
@@ -44,6 +44,40 @@ body {
   border: 1px solid #e2e8f0;
   border-radius: 8px;
   color: #334155;
+}
+
+#special-notice-preview {
+  padding: 0.5rem;
+  max-height: none;
+  overflow: visible;
+  background: transparent;
+  border: none;
+}
+
+.notice-block {
+  margin: 0 0 1rem;
+  padding: 0.75rem 1rem;
+  background: #f8fafc;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+}
+
+.notice-block-title {
+  margin: 0 0 0.5rem;
+  font-size: 0.95rem;
+  color: #0f172a;
+}
+
+.notice-block-body {
+  margin: 0;
+  padding: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 0.85rem;
+  line-height: 1.45;
+  color: #334155;
+  background: transparent;
+  border: none;
 }
 
 .field {

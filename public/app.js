@@ -290,6 +290,7 @@ async function readRunStream(res) {
   let completedLanguages = 0;
   let totalRows = 0;
   let abortedMessage = '';
+  let baselineWarning = '';
   let elapsedMs = 0;
   let currentLanguage = '';
   let clientProgressStartedAt = 0;
@@ -355,6 +356,7 @@ async function readRunStream(res) {
       if (typeof event.durationMs === 'number' && typeof run.durationMs !== 'number') {
         run.durationMs = event.durationMs;
       }
+      renderSpecialNoticeFromRun(run);
       renderLanguageRun(run, completedLanguages);
       completedLanguages += 1;
       totalRows += (run.results || []).length;
@@ -378,13 +380,30 @@ async function readRunStream(res) {
       if (event.aborted && event.error) {
         abortedMessage = event.error;
       }
+      if (event.baselineWarning) {
+        baselineWarning = String(event.baselineWarning);
+      }
       stopProgressTimer();
+      return;
+    }
+    if (event.type === 'baselineWarning') {
+      baselineWarning =
+        event.warning ||
+        (event.mismatchSummary
+          ? `English check: ${event.mismatchSummary}. Other languages will still run.`
+          : '');
+      if (baselineWarning) {
+        statusEl.textContent = baselineWarning;
+      }
       return;
     }
     if (event.type === 'baselineError') {
       abortedMessage =
         event.error ||
         'English copy in the uploaded file does not match the live site. Please update the English content before checking other languages.';
+      if (event.mismatchSummary) {
+        abortedMessage += ` (${event.mismatchSummary})`;
+      }
       resultsContainer.innerHTML = '';
       const message = document.createElement('p');
       message.className = 'run-error';
@@ -429,6 +448,7 @@ async function readRunStream(res) {
     languageCount: completedLanguages,
     totalRows,
     abortedMessage,
+    baselineWarning,
     elapsedMs,
   };
 }
@@ -469,21 +489,66 @@ function renderPropertyOverviewSpecialMeta(om) {
     om.fetchedText && om.preview ? String(om.preview) : '(empty — see status above)';
 }
 
-/** @param {string | null | undefined} message */
-function renderSpecialNoticeMessage(message) {
+/**
+ * @param {string | null | undefined} message
+ * @param {number} [blockCount]
+ */
+function renderSpecialNoticeMessage(message, blockCount = 0) {
   if (!specialNoticeSection || !specialNoticeIntro || !specialNoticePreviewEl) {
     return;
   }
   const text = message != null ? String(message).trim() : '';
   if (!text) {
     specialNoticeSection.hidden = true;
-    specialNoticePreviewEl.textContent = '';
+    specialNoticePreviewEl.innerHTML = '';
+    return;
+  }
+
+  const blocks =
+    blockCount > 0
+      ? blockCount
+      : (text.match(/^Special notice \d+/gm) || []).length || 1;
+
+  specialNoticeSection.hidden = false;
+  specialNoticeIntro.innerHTML = `<span class="hint">Captured ${blocks} special-notice block(s) from the property overview.</span>`;
+  if (blocks > 1 && text.includes('\n---\n')) {
+    const parts = text.split(/\n---\n/).map((part) => part.replace(/^Special notice \d+\s*/i, '').trim());
+    specialNoticePreviewEl.innerHTML = parts
+      .filter(Boolean)
+      .map(
+        (body, i) =>
+          `<article class="notice-block"><h3 class="notice-block-title">Notice ${i + 1}</h3><pre class="notice-block-body">${escapeHtml(body)}</pre></article>`,
+      )
+      .join('');
+  } else {
+    specialNoticePreviewEl.innerHTML = `<article class="notice-block"><pre class="notice-block-body">${escapeHtml(text)}</pre></article>`;
+  }
+}
+
+/** @param {Record<string, unknown> | null | undefined} run */
+function renderSpecialNoticeFromRun(run) {
+  if (!specialNoticeSection || !specialNoticeIntro || !specialNoticePreviewEl) {
+    return;
+  }
+  const messages = Array.isArray(run?.specialNoticeMessages) ? run.specialNoticeMessages : [];
+  if (!messages.length) {
+    const preview = run?.specialNoticeMessage != null ? String(run.specialNoticeMessage).trim() : '';
+    if (!preview) {
+      return;
+    }
+    renderSpecialNoticeMessage(preview, 1);
     return;
   }
 
   specialNoticeSection.hidden = false;
-  specialNoticeIntro.innerHTML = `<span class="hint">Captured ${text.length} character(s) from <code>div.alert.alert-info.special-notice div.message</code> (title, paragraphs, CTA link text).</span>`;
-  specialNoticePreviewEl.textContent = text;
+  specialNoticeIntro.innerHTML = `<span class="hint">Captured <strong>${messages.length}</strong> special-notice block(s) from <code>div.alert.alert-info.special-notice div.message</code> (${escapeHtml(languageTitle(run.language || ''))}). Each Excel row is matched to one block by label #N, sheet order, or expected text.</span>`;
+
+  specialNoticePreviewEl.innerHTML = messages
+    .map((text, i) => {
+      const body = String(text || '').trim();
+      return `<article class="notice-block"><h3 class="notice-block-title">Notice ${i + 1}</h3><pre class="notice-block-body">${escapeHtml(body)}</pre></article>`;
+    })
+    .join('');
 }
 
 /** @param {Record<string, unknown> | null | undefined} mm */
@@ -538,9 +603,13 @@ form.addEventListener('submit', async (e) => {
       throw new Error(message);
     }
     const summary = await readRunStream(res);
-    statusEl.textContent = summary.abortedMessage
-      ? `${summary.abortedMessage} Elapsed: ${formatDuration(summary.elapsedMs)}`
-      : `Done in ${formatDuration(summary.elapsedMs)} — ${summary.languageCount} language(s), ${summary.totalRows} total row(s). Base URL: ${summary.pageUrl}`;
+    if (summary.abortedMessage) {
+      statusEl.textContent = `${summary.abortedMessage} Elapsed: ${formatDuration(summary.elapsedMs)}`;
+    } else if (summary.baselineWarning) {
+      statusEl.textContent = `${summary.baselineWarning} Done in ${formatDuration(summary.elapsedMs)} — ${summary.languageCount} language(s), ${summary.totalRows} total row(s).`;
+    } else {
+      statusEl.textContent = `Done in ${formatDuration(summary.elapsedMs)} — ${summary.languageCount} language(s), ${summary.totalRows} total row(s). Base URL: ${summary.pageUrl}`;
+    }
   } catch (err) {
     console.error(err);
     const msg = err instanceof Error ? err.message : String(err);
