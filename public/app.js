@@ -15,6 +15,9 @@ const LANGUAGE_LABELS = {
   SPA: 'Spanish',
 };
 
+/** Same order as server ALL_LANGUAGE_ORDER. */
+const ALL_LANGUAGE_ORDER = ['ENG', 'GER', 'ITA', 'FRE', 'JAP', 'SPA'];
+
 /** Same as server LANGUAGE_HOSTS — used if /api/health has no languageHosts yet. */
 const FALLBACK_LANGUAGE_HOSTS = {
   ENG: 'www.lhw.com',
@@ -34,6 +37,7 @@ const fileInput = document.getElementById('file');
 const languageInput = document.getElementById('language');
 const pageUrlInput = document.getElementById('pageUrl');
 const runBtn = document.getElementById('run-btn');
+const stopBtn = document.getElementById('stop-btn');
 const statusEl = document.getElementById('status');
 const resultsContainer = document.getElementById('results-container');
 const propertyOverviewSpecialSection = document.getElementById('property-overview-special-section');
@@ -45,6 +49,112 @@ const messageBannerPreviewEl = document.getElementById('message-banner-preview')
 const specialNoticeSection = document.getElementById('special-notice-section');
 const specialNoticeIntro = document.getElementById('special-notice-intro');
 const specialNoticePreviewEl = document.getElementById('special-notice-preview');
+/** @type {AbortController | null} */
+let runAbortController = null;
+let stopRequestedByUser = false;
+/** Bumped on each new run or stop — stale stream events are ignored. */
+let runSessionId = 0;
+/** @type {ReturnType<typeof setInterval> | null} */
+let runProgressTimer = null;
+
+/**
+ * After Stop on an ALL run, the next Run resumes languages already finished.
+ * @type {{ fileKey: string, pageUrl: string, languageMode: string, stoppedPartially: boolean, completedRuns: object[] } | null}
+ */
+let runResumeState = null;
+
+/** @param {File | undefined | null} file */
+function workbookKey(file) {
+  if (!file) {
+    return '';
+  }
+  return `${file.name}|${file.size}|${file.lastModified}`;
+}
+
+function resetRunResumeState() {
+  runResumeState = null;
+  updateRunButtonLabel();
+}
+
+function initRunResumeState() {
+  runResumeState = {
+    fileKey: workbookKey(fileInput.files[0]),
+    pageUrl: pageUrlInput.value.trim(),
+    languageMode: languageInput.value,
+    stoppedPartially: false,
+    completedRuns: [],
+  };
+  updateRunButtonLabel();
+}
+
+/** @param {object} run */
+function recordCompletedLanguageRun(run) {
+  const code = String(run?.language || '').trim();
+  if (!code || !runResumeState || runResumeState.languageMode !== 'ALL') {
+    return;
+  }
+  const snapshot = {
+    language: code,
+    pageUrl: run.pageUrl,
+    results: run.results,
+    durationMs: run.durationMs,
+    error: run.error,
+    specialNoticeMessage: run.specialNoticeMessage,
+    specialNoticeMessages: run.specialNoticeMessages,
+  };
+  const idx = runResumeState.completedRuns.findIndex((r) => r.language === code);
+  if (idx >= 0) {
+    runResumeState.completedRuns[idx] = snapshot;
+  } else {
+    runResumeState.completedRuns.push(snapshot);
+  }
+}
+
+function canResumeAllLanguageRun() {
+  if (!runResumeState?.stoppedPartially || runResumeState.languageMode !== 'ALL') {
+    return false;
+  }
+  if (languageInput.value !== 'ALL') {
+    return false;
+  }
+  if (workbookKey(fileInput.files[0]) !== runResumeState.fileKey) {
+    return false;
+  }
+  if (pageUrlInput.value.trim() !== runResumeState.pageUrl) {
+    return false;
+  }
+  const done = runResumeState.completedRuns.length;
+  return done > 0 && done < ALL_LANGUAGE_ORDER.length;
+}
+
+function skipLanguagesForResume() {
+  return (runResumeState?.completedRuns || []).map((r) => r.language);
+}
+
+function markRunStoppedPartially() {
+  if (runResumeState?.languageMode === 'ALL' && runResumeState.completedRuns.length > 0) {
+    runResumeState.stoppedPartially = true;
+    updateRunButtonLabel();
+  }
+}
+
+function markRunFullyCompleted() {
+  if (runResumeState) {
+    runResumeState.stoppedPartially = false;
+    updateRunButtonLabel();
+  }
+}
+
+function countRowsInRuns(runs) {
+  return (runs || []).reduce((sum, run) => sum + (run.results?.length || 0), 0);
+}
+
+function updateRunButtonLabel() {
+  if (!runBtn) {
+    return;
+  }
+  runBtn.textContent = canResumeAllLanguageRun() ? 'Resume remaining languages' : 'Run / Compare';
+}
 
 /**
  * Keep path + query; only swap the hostname to match the selected language (www, de, it, ...).
@@ -72,6 +182,9 @@ function buildUrlWithLanguageHost(urlString, langCode) {
 document.querySelectorAll('.lang-btn').forEach((btn) => {
   btn.addEventListener('click', () => {
     const lang = btn.getAttribute('data-lang');
+    if (runResumeState && lang !== runResumeState.languageMode) {
+      resetRunResumeState();
+    }
     languageInput.value = lang;
     document.querySelectorAll('.lang-btn').forEach((b) => b.classList.remove('active'));
     btn.classList.add('active');
@@ -81,6 +194,7 @@ document.querySelectorAll('.lang-btn').forEach((btn) => {
     if (base && lang !== 'ALL') {
       pageUrlInput.value = buildUrlWithLanguageHost(base, lang);
     }
+    updateRunButtonLabel();
   });
 });
 
@@ -115,6 +229,13 @@ async function loadDefaultUrlHint() {
 
 const appOriginHint = document.getElementById('app-origin-hint');
 loadDefaultUrlHint();
+
+function setRunControls(isRunning) {
+  runBtn.disabled = Boolean(isRunning);
+  if (stopBtn) {
+    stopBtn.disabled = !isRunning;
+  }
+}
 
 function statusClassForRow(status) {
   const s = String(status || '').toLowerCase();
@@ -165,12 +286,28 @@ function progressStatus(expectedLanguages, completedLanguages, elapsedMs, curren
   return `${runProgressLabel(expectedLanguages)}${active}… ${completedLanguages}/${expectedLanguages || '?'} complete. Elapsed: ${formatDuration(elapsedMs)}`;
 }
 
+function stopRunProgressTimer() {
+  if (runProgressTimer) {
+    window.clearInterval(runProgressTimer);
+    runProgressTimer = null;
+  }
+}
+
 function renderLanguageRun(run, index) {
   const rows = run.results || [];
   const counts = countStatuses(rows);
   const duration = typeof run.durationMs === 'number' ? ` · ${formatDuration(run.durationMs)}` : '';
+  const langCode = String(run.language || '').trim();
+  if (langCode) {
+    resultsContainer
+      .querySelectorAll(`.language-section[data-language="${langCode}"]`)
+      .forEach((node) => node.remove());
+  }
   const details = document.createElement('details');
   details.className = 'language-section';
+  if (langCode) {
+    details.dataset.language = langCode;
+  }
   details.open = index === 0 || counts.failed > 0 || Boolean(run.error);
 
   const summary = document.createElement('summary');
@@ -227,7 +364,9 @@ function renderLanguageRun(run, index) {
     </div>
   `;
   details.appendChild(body);
+  removeRunProgressHint();
   resultsContainer.appendChild(details);
+  details.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
 
 function renderLanguageRuns(languageRuns) {
@@ -249,6 +388,32 @@ function clearRunOutput() {
   renderSpecialNoticeMessage(null);
 }
 
+fileInput?.addEventListener('change', () => {
+  resetRunResumeState();
+});
+
+pageUrlInput?.addEventListener('change', () => {
+  if (runResumeState && pageUrlInput.value.trim() !== runResumeState.pageUrl) {
+    resetRunResumeState();
+  }
+});
+
+/** @param {string} message */
+function showRunProgressHint(message) {
+  let hint = document.getElementById('run-progress-hint');
+  if (!hint) {
+    hint = document.createElement('p');
+    hint.id = 'run-progress-hint';
+    hint.className = 'placeholder run-progress';
+    resultsContainer.prepend(hint);
+  }
+  hint.textContent = message;
+}
+
+function removeRunProgressHint() {
+  document.getElementById('run-progress-hint')?.remove();
+}
+
 function renderErrorResult(message) {
   renderLanguageRuns([
     {
@@ -268,7 +433,7 @@ function renderErrorResult(message) {
   ]);
 }
 
-async function readRunStream(res) {
+async function readRunStream(res, sessionId) {
   if (!res.body) {
     const data = await res.json();
     const languageRuns = data.languageRuns || [];
@@ -291,19 +456,24 @@ async function readRunStream(res) {
   let totalRows = 0;
   let abortedMessage = '';
   let baselineWarning = '';
+  let runCancelled = false;
   let elapsedMs = 0;
   let currentLanguage = '';
   let clientProgressStartedAt = 0;
   let serverElapsedAtLastEvent = 0;
-  let progressTimer = null;
+  let priorRowCount = countRowsInRuns(runResumeState?.completedRuns);
+
+  const isActiveSession = () => sessionId === runSessionId;
 
   const startProgressTimer = () => {
-    if (progressTimer) {
-      return;
-    }
+    stopRunProgressTimer();
     clientProgressStartedAt = Date.now();
     serverElapsedAtLastEvent = elapsedMs;
-    progressTimer = window.setInterval(() => {
+    runProgressTimer = window.setInterval(() => {
+      if (!isActiveSession()) {
+        stopRunProgressTimer();
+        return;
+      }
       const liveElapsedMs = serverElapsedAtLastEvent + (Date.now() - clientProgressStartedAt);
       statusEl.textContent = progressStatus(
         expectedLanguages,
@@ -319,21 +489,35 @@ async function readRunStream(res) {
     serverElapsedAtLastEvent = elapsedMs;
   };
 
-  const stopProgressTimer = () => {
-    if (progressTimer) {
-      window.clearInterval(progressTimer);
-      progressTimer = null;
-    }
-  };
-
   const handleEvent = (event) => {
-    if (!event || typeof event !== 'object') {
+    if (!isActiveSession() || !event || typeof event !== 'object') {
       return;
     }
     if (event.type === 'start') {
       pageUrl = event.pageUrl || '';
       expectedLanguages = Array.isArray(event.languages) ? event.languages.length : 0;
-      statusEl.textContent = progressStatus(expectedLanguages, completedLanguages, 0);
+      const skipped = Array.isArray(event.skippedLanguages) ? event.skippedLanguages : [];
+      if (skipped.length) {
+        completedLanguages = skipped.length;
+        priorRowCount = countRowsInRuns(runResumeState?.completedRuns);
+        totalRows = 0;
+      }
+      const remaining = Array.isArray(event.languagesToRun)
+        ? event.languagesToRun.length
+        : Math.max(0, expectedLanguages - skipped.length);
+      if (event.resumed && skipped.length) {
+        showRunProgressHint(
+          `Resuming — skipping ${skipped.join(', ')} (already done). ${remaining} language(s) remaining.`,
+        );
+        statusEl.textContent = `Resuming… ${completedLanguages}/${expectedLanguages} complete.`;
+      } else {
+        showRunProgressHint(
+          expectedLanguages > 1
+            ? `Running ${expectedLanguages} languages — results appear below as each language finishes.`
+            : 'Running — results appear when the language finishes.',
+        );
+        statusEl.textContent = progressStatus(expectedLanguages, completedLanguages, 0);
+      }
       startProgressTimer();
       return;
     }
@@ -342,6 +526,9 @@ async function readRunStream(res) {
       if (typeof event.elapsedMs === 'number') {
         elapsedMs = event.elapsedMs;
       }
+      showRunProgressHint(
+        `Running ${languageTitle(currentLanguage)} (${completedLanguages + 1} of ${expectedLanguages || '?'})…`,
+      );
       syncProgressTimer();
       statusEl.textContent = progressStatus(
         expectedLanguages,
@@ -358,6 +545,7 @@ async function readRunStream(res) {
       }
       renderSpecialNoticeFromRun(run);
       renderLanguageRun(run, completedLanguages);
+      recordCompletedLanguageRun(run);
       completedLanguages += 1;
       totalRows += (run.results || []).length;
       if (typeof event.elapsedMs === 'number') {
@@ -383,7 +571,16 @@ async function readRunStream(res) {
       if (event.baselineWarning) {
         baselineWarning = String(event.baselineWarning);
       }
-      stopProgressTimer();
+      if (event.cancelled) {
+        runCancelled = true;
+      } else if (
+        expectedLanguages > 1 &&
+        completedLanguages >= expectedLanguages &&
+        !abortedMessage
+      ) {
+        markRunFullyCompleted();
+      }
+      removeRunProgressHint();
       return;
     }
     if (event.type === 'baselineWarning') {
@@ -392,9 +589,6 @@ async function readRunStream(res) {
         (event.mismatchSummary
           ? `English check: ${event.mismatchSummary}. Other languages will still run.`
           : '');
-      if (baselineWarning) {
-        statusEl.textContent = baselineWarning;
-      }
       return;
     }
     if (event.type === 'baselineError') {
@@ -404,15 +598,16 @@ async function readRunStream(res) {
       if (event.mismatchSummary) {
         abortedMessage += ` (${event.mismatchSummary})`;
       }
-      resultsContainer.innerHTML = '';
+      if (!resultsContainer.querySelector('.language-section')) {
+        resultsContainer.innerHTML = '';
+      }
       const message = document.createElement('p');
       message.className = 'run-error';
       message.textContent = abortedMessage;
-      resultsContainer.appendChild(message);
+      resultsContainer.prepend(message);
       if (typeof event.elapsedMs === 'number') {
         elapsedMs = event.elapsedMs;
       }
-      stopProgressTimer();
       statusEl.textContent = `${abortedMessage} Elapsed: ${formatDuration(elapsedMs)}`;
       return;
     }
@@ -421,36 +616,64 @@ async function readRunStream(res) {
     }
   };
 
-  while (true) {
-    const { value, done } = await reader.read();
-    buffer += decoder.decode(value || new Uint8Array(), { stream: !done });
-    const lines = buffer.split('\n');
-    buffer = lines.pop() || '';
-    for (const line of lines) {
-      const trimmed = line.trim();
-      if (trimmed) {
-        handleEvent(JSON.parse(trimmed));
+  try {
+    while (true) {
+      if (!isActiveSession()) {
+        runCancelled = true;
+        break;
+      }
+      let value;
+      let done;
+      try {
+        ({ value, done } = await reader.read());
+      } catch (readErr) {
+        if (readErr && readErr.name === 'AbortError') {
+          runCancelled = true;
+          break;
+        }
+        throw readErr;
+      }
+      buffer += decoder.decode(value || new Uint8Array(), { stream: !done });
+      const lines = buffer.split('\n');
+      buffer = lines.pop() || '';
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (trimmed && isActiveSession()) {
+          handleEvent(JSON.parse(trimmed));
+        }
+      }
+      if (done) {
+        break;
       }
     }
-    if (done) {
-      break;
+
+    if (buffer.trim() && isActiveSession()) {
+      handleEvent(JSON.parse(buffer.trim()));
+    }
+  } finally {
+    stopRunProgressTimer();
+    if (isActiveSession()) {
+      removeRunProgressHint();
     }
   }
-
-  if (buffer.trim()) {
-    handleEvent(JSON.parse(buffer.trim()));
-  }
-
-  stopProgressTimer();
 
   return {
     pageUrl,
     languageCount: completedLanguages,
-    totalRows,
+    totalRows: priorRowCount + totalRows,
     abortedMessage,
     baselineWarning,
+    runCancelled,
     elapsedMs,
   };
+}
+
+async function requestServerRunStop() {
+  try {
+    await fetch('/api/run/stop', { method: 'POST', keepalive: true });
+  } catch {
+    // Server may already be stopping the browser.
+  }
 }
 
 function escapeHtml(str) {
@@ -577,20 +800,43 @@ function renderMessageBannerMeta(mm) {
 
 form.addEventListener('submit', async (e) => {
   e.preventDefault();
-  clearRunOutput();
-  statusEl.textContent = `Running Playwright for ${selectedRunLabel()}…`;
-  runBtn.disabled = true;
+  if (runAbortController) {
+    await requestServerRunStop();
+    runAbortController.abort();
+    runAbortController = null;
+    stopRunProgressTimer();
+  }
+  runSessionId += 1;
+  const sessionId = runSessionId;
+  const resuming = canResumeAllLanguageRun();
+  if (!resuming) {
+    clearRunOutput();
+    initRunResumeState();
+  } else if (runResumeState) {
+    runResumeState.stoppedPartially = false;
+  }
+  const skipList = resuming ? skipLanguagesForResume() : [];
+  statusEl.textContent = resuming
+    ? `Resuming ${selectedRunLabel()} — skipping ${skipList.join(', ')}…`
+    : `Running Playwright for ${selectedRunLabel()}…`;
+  runAbortController = new AbortController();
+  stopRequestedByUser = false;
+  setRunControls(true);
 
   const fd = new FormData();
   fd.append('file', fileInput.files[0]);
   fd.append('language', languageInput.value);
   // Empty = server applies DEFAULT_LHW_URL (see server.js).
   fd.append('pageUrl', pageUrlInput.value.trim());
+  if (skipList.length) {
+    fd.append('skipLanguages', JSON.stringify(skipList));
+  }
 
   try {
     const res = await fetch('/api/run', {
       method: 'POST',
       body: fd,
+      signal: runAbortController.signal,
     });
     if (!res.ok) {
       let message = `Request failed (${res.status})`;
@@ -602,8 +848,14 @@ form.addEventListener('submit', async (e) => {
       }
       throw new Error(message);
     }
-    const summary = await readRunStream(res);
-    if (summary.abortedMessage) {
+    const summary = await readRunStream(res, sessionId);
+    if (sessionId !== runSessionId) {
+      return;
+    }
+    if (summary.runCancelled || stopRequestedByUser) {
+      markRunStoppedPartially();
+      statusEl.textContent = `Stopped. ${summary.languageCount} language(s) completed, ${summary.totalRows} row(s). Click “Resume remaining languages” to continue. Elapsed: ${formatDuration(summary.elapsedMs)}`;
+    } else if (summary.abortedMessage) {
       statusEl.textContent = `${summary.abortedMessage} Elapsed: ${formatDuration(summary.elapsedMs)}`;
     } else if (summary.baselineWarning) {
       statusEl.textContent = `${summary.baselineWarning} Done in ${formatDuration(summary.elapsedMs)} — ${summary.languageCount} language(s), ${summary.totalRows} total row(s).`;
@@ -612,11 +864,57 @@ form.addEventListener('submit', async (e) => {
     }
   } catch (err) {
     console.error(err);
+    if (sessionId !== runSessionId) {
+      return;
+    }
+    if (stopRequestedByUser || (err && err.name === 'AbortError')) {
+      markRunStoppedPartially();
+      const done = runResumeState?.completedRuns?.length || 0;
+      statusEl.textContent =
+        done > 0
+          ? `Run stopped. ${done} language(s) saved — click “Resume remaining languages” to continue.`
+          : 'Run stopped by user.';
+      return;
+    }
     const msg = err instanceof Error ? err.message : String(err);
     statusEl.textContent = msg;
     clearRunOutput();
     renderErrorResult(msg);
   } finally {
-    runBtn.disabled = false;
+    stopRunProgressTimer();
+    removeRunProgressHint();
+    if (sessionId === runSessionId) {
+      runAbortController = null;
+      stopRequestedByUser = false;
+      setRunControls(false);
+      updateRunButtonLabel();
+    }
   }
 });
+
+if (stopBtn) {
+  stopBtn.addEventListener('click', async () => {
+    if (!runAbortController) {
+      return;
+    }
+    stopRequestedByUser = true;
+    runSessionId += 1;
+    stopRunProgressTimer();
+    removeRunProgressHint();
+    statusEl.textContent = 'Stopping run…';
+    await requestServerRunStop();
+    runAbortController.abort();
+    runAbortController = null;
+    markRunStoppedPartially();
+    setRunControls(false);
+    const done = runResumeState?.completedRuns?.length || 0;
+    if (done > 0) {
+      statusEl.textContent = `Stopped. ${done} language(s) saved — click “Resume remaining languages” to continue.`;
+    } else {
+      statusEl.textContent = 'Run stopped by user.';
+    }
+    updateRunButtonLabel();
+  });
+}
+
+updateRunButtonLabel();

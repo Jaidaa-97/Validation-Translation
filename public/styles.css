@@ -157,6 +157,21 @@ input[type='url'] {
   cursor: not-allowed;
 }
 
+.danger {
+  background: #b91c1c;
+  color: #fff;
+  border: none;
+  padding: 0.65rem 1.25rem;
+  border-radius: 8px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.danger:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
 .status {
   color: #475569;
   font-size: 0.95rem;
@@ -278,6 +293,12 @@ th {
 
 .placeholder {
   color: #64748b;
+}
+
+.run-progress {
+  padding: 0.75rem 0;
+  font-weight: 600;
+  color: #0f766e;
 }
 
 .hint-compact {

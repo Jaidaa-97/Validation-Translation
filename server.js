@@ -11,9 +11,45 @@ const http = require('http');
 const { exec } = require('child_process');
 const express = require('express');
 const multer = require('multer');
-const { runComparison } = require('./lib/playwrightRunner');
+const { runComparison, closeActiveRunBrowser, isRunCancelledError } = require('./lib/playwrightRunner');
 const { buildUrlForLanguage, LANGUAGE_HOSTS } = require('./lib/changeLanguage');
 const { isFeatureSectionLabel } = require('./lib/featuresComparison');
+
+const ALL_LANGUAGE_ORDER = ['ENG', 'GER', 'ITA', 'FRE', 'JAP', 'SPA'];
+
+/**
+ * @param {unknown} raw
+ * @returns {string[]}
+ */
+function parseSkipLanguages(raw) {
+  if (!raw) {
+    return [];
+  }
+  let list = raw;
+  if (typeof raw === 'string') {
+    try {
+      list = JSON.parse(raw);
+    } catch {
+      list = raw.split(/[,;\s]+/);
+    }
+  }
+  if (!Array.isArray(list)) {
+    return [];
+  }
+  const seen = new Set();
+  const out = [];
+  for (const item of list) {
+    const code = String(item || '')
+      .trim()
+      .toUpperCase();
+    if (!LANGUAGE_HOSTS[code] || seen.has(code)) {
+      continue;
+    }
+    seen.add(code);
+    out.push(code);
+  }
+  return out;
+}
 
 /** Default hotel page from your brief — override in the form or with DEFAULT_LHW_URL. */
 const DEFAULT_LHW_URL =
@@ -67,6 +103,28 @@ app.use(
   }),
 );
 
+/** @type {{ cancel: () => void } | null} */
+let activeHttpRun = null;
+
+function cancelActiveHttpRun() {
+  if (activeHttpRun) {
+    activeHttpRun.cancel();
+    activeHttpRun = null;
+  }
+}
+
+/**
+ * Stop the in-flight Playwright run (called when the user clicks Stop in the UI).
+ */
+app.post('/api/run/stop', (_req, res) => {
+  cancelActiveHttpRun();
+  closeActiveRunBrowser()
+    .catch(() => {})
+    .finally(() => {
+      res.json({ ok: true });
+    });
+});
+
 /**
  * Health check
  */
@@ -84,12 +142,24 @@ app.get('/api/health', (_req, res) => {
  * POST multipart form:
  * - file: Excel workbook
  * - pageUrl: optional full URL to open
+ * - skipLanguages: optional JSON array of locale codes already completed (resume after Stop)
  *
  * Runs every configured LHW language and streams one result group as soon as it is ready.
  */
 app.post('/api/run', upload.single('file'), async (req, res) => {
+  cancelActiveHttpRun();
+  const runControl = {
+    cancelled: false,
+    cancel() {
+      this.cancelled = true;
+      closeActiveRunBrowser().catch(() => {});
+    },
+  };
+  activeHttpRun = runControl;
+
   try {
     if (!req.file) {
+      activeHttpRun = null;
       return res.status(400).json({ error: 'Missing file field "file".' });
     }
 
@@ -101,14 +171,27 @@ app.post('/api/run', upload.single('file'), async (req, res) => {
     try {
       basePageUrl = buildUrlForLanguage(rawUrl, 'ENG');
     } catch (e) {
+      activeHttpRun = null;
       return res.status(400).json({ error: e instanceof Error ? e.message : String(e) });
     }
 
     const headless = String(process.env.HEADLESS || 'true').toLowerCase() !== 'false';
-    const ALL_LANGUAGE_ORDER = ['ENG', 'GER', 'ITA', 'FRE', 'JAP', 'SPA'];
-    const languages = requestedLanguage && LANGUAGE_HOSTS[requestedLanguage]
+    const allLanguages = requestedLanguage && LANGUAGE_HOSTS[requestedLanguage]
       ? [requestedLanguage]
       : ALL_LANGUAGE_ORDER.filter((code) => LANGUAGE_HOSTS[code]);
+    const skipLanguages = parseSkipLanguages(req.body.skipLanguages);
+    const skipSet = new Set(skipLanguages);
+    const languages = allLanguages.filter((code) => !skipSet.has(code));
+    if (!languages.length) {
+      activeHttpRun = null;
+      fs.promises.unlink(req.file.path).catch(() => {});
+      return res.status(400).json({
+        error:
+          skipLanguages.length > 0
+            ? 'Every language in this run was already completed. Change the file, URL, or language selection to start fresh.'
+            : 'No languages selected to run.',
+      });
+    }
     const strictEnglishBaseline =
       String(process.env.ENG_BASELINE_STRICT || '').toLowerCase() === 'true';
     const languageRuns = [];
@@ -117,18 +200,42 @@ app.post('/api/run', upload.single('file'), async (req, res) => {
     const startedAtMs = Date.now();
 
     res.setHeader('Content-Type', 'application/x-ndjson; charset=utf-8');
-    res.setHeader('Cache-Control', 'no-store');
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+    res.setHeader('Connection', 'keep-alive');
     res.setHeader('X-Accel-Buffering', 'no');
     res.flushHeaders?.();
+    if (res.socket) {
+      res.socket.setNoDelay(true);
+    }
+
+    /** User clicked Stop or closed the tab while the response stream is still open. */
+    let runCancelled = false;
+    const shouldStopRun = () => runControl.cancelled || runCancelled;
+    res.on('close', () => {
+      if (res.writableFinished || runCancelled) {
+        return;
+      }
+      runCancelled = true;
+      runControl.cancel();
+    });
 
     const writeEvent = (event) => {
+      if (res.destroyed || res.writableEnded) {
+        return;
+      }
       res.write(`${JSON.stringify(event)}\n`);
+      if (typeof res.flush === 'function') {
+        res.flush();
+      }
     };
 
     writeEvent({
       type: 'start',
       pageUrl: basePageUrl,
-      languages,
+      languages: allLanguages,
+      languagesToRun: languages,
+      skippedLanguages: skipLanguages,
+      resumed: skipLanguages.length > 0,
       startedAtMs,
     });
 
@@ -189,6 +296,9 @@ app.post('/api/run', upload.single('file'), async (req, res) => {
     };
 
     for (const language of languages) {
+      if (shouldStopRun()) {
+        break;
+      }
       const pageUrl = buildUrlForLanguage(basePageUrl, language);
       const languageStartedAtMs = Date.now();
       writeEvent({
@@ -205,6 +315,7 @@ app.post('/api/run', upload.single('file'), async (req, res) => {
           languageCode: language,
           pageUrl,
           headless,
+          shouldAbort: shouldStopRun,
         });
         languageRun = {
           language,
@@ -212,6 +323,9 @@ app.post('/api/run', upload.single('file'), async (req, res) => {
           ...run,
         };
       } catch (runErr) {
+        if (shouldStopRun() || isRunCancelledError(runErr)) {
+          break;
+        }
         const message = runErr instanceof Error ? runErr.message : String(runErr);
         languageRun = {
           language,
@@ -233,6 +347,9 @@ app.post('/api/run', upload.single('file'), async (req, res) => {
       const durationMs = Date.now() - languageStartedAtMs;
       languageRun.durationMs = durationMs;
       languageRuns.push(languageRun);
+      if (shouldStopRun()) {
+        break;
+      }
       writeEvent({
         type: 'language',
         run: languageRun,
@@ -284,14 +401,18 @@ app.post('/api/run', upload.single('file'), async (req, res) => {
     fs.promises.unlink(req.file.path).catch(() => {});
 
     const results = languageRuns.flatMap((run) => run.results || []);
+    const stopped = shouldStopRun();
     writeEvent({
       type: 'done',
       pageUrl: basePageUrl,
-      languages,
+      languages: allLanguages,
+      languagesRun: languageRuns.map((run) => run.language),
+      skippedLanguages: skipLanguages,
       totalRows: results.length,
-      aborted: Boolean(abortedMessage),
-      error: abortedMessage,
+      aborted: Boolean(abortedMessage) || stopped,
+      error: stopped ? 'Run stopped.' : abortedMessage,
       baselineWarning,
+      cancelled: stopped,
       elapsedMs: Date.now() - startedAtMs,
     });
     res.end();
@@ -302,6 +423,10 @@ app.post('/api/run', upload.single('file'), async (req, res) => {
       res.end();
     } else {
       res.status(500).json({ error: message });
+    }
+  } finally {
+    if (activeHttpRun === runControl) {
+      activeHttpRun = null;
     }
   }
 });
