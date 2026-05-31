@@ -17,6 +17,7 @@ const {
   setActiveRunBrowser,
   closeActiveRunBrowser,
   isRunCancelledError,
+  isCopyMismatchResult,
 } = require('./lib/playwrightRunner');
 const { buildUrlForLanguage, LANGUAGE_HOSTS } = require('./lib/changeLanguage');
 const { isFeatureSectionLabel } = require('./lib/featuresComparison');
@@ -282,7 +283,7 @@ app.post('/api/run', upload.single('file'), async (req, res) => {
       return !isFeatureSectionLabel(section);
     };
 
-    /** Hard stop: run error or row-level Failed (not mere copy mismatch). */
+    /** Hard stop: run error or technical failure (not a copy mismatch). */
     const englishBaselineHardFailed = (run) => {
       if (run?.error) {
         return true;
@@ -292,7 +293,8 @@ app.post('/api/run', upload.single('file'), async (req, res) => {
         if (!isBaselineContentRow(row)) {
           return false;
         }
-        return String(row.status || '').toLowerCase() === 'failed';
+        const status = String(row.status || '').toLowerCase();
+        return status === 'failed' && !isCopyMismatchResult(row);
       });
     };
 
@@ -313,21 +315,11 @@ app.post('/api/run', upload.single('file'), async (req, res) => {
 
     const englishBaselineMismatchSummary = (run) => {
       const rows = (run?.results || []).filter(isBaselineContentRow);
-      const notFound = rows.filter(
-        (row) => String(row.status || '').toLowerCase() === 'not found',
-      );
-      const failed = rows.filter((row) => String(row.status || '').toLowerCase() === 'failed');
-      if (!notFound.length && !failed.length) {
+      const mismatches = rows.filter((row) => isCopyMismatchResult(row));
+      if (!mismatches.length) {
         return '';
       }
-      const parts = [];
-      if (notFound.length) {
-        parts.push(`${notFound.length} Not Found`);
-      }
-      if (failed.length) {
-        parts.push(`${failed.length} Failed`);
-      }
-      return parts.join(', ');
+      return `${mismatches.length} Failed`;
     };
 
     /** @type {import('playwright').Browser | null} */
