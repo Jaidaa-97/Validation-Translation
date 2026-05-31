@@ -405,7 +405,8 @@ function stopRunProgressTimer() {
   }
 }
 
-function renderLanguageRun(run, index) {
+function renderLanguageRun(run, index, options = {}) {
+  const { scrollIntoView = false } = options;
   const rows = run.results || [];
   const counts = countStatuses(rows);
   const duration = typeof run.durationMs === 'number' ? ` · ${formatDuration(run.durationMs)}` : '';
@@ -478,7 +479,9 @@ function renderLanguageRun(run, index) {
   details.appendChild(body);
   removeRunProgressHint();
   resultsContainer.appendChild(details);
-  details.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  if (scrollIntoView) {
+    details.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
 }
 
 function renderLanguageRuns(languageRuns) {
