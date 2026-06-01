@@ -24,6 +24,8 @@ console.log('---');
 console.log('isFeatureSectionLabel checks:');
 [
   'General Features Complimentary',
+  'health features',
+  'Health Features',
   'general features complimentary',
   '  Recreation & Health Additional Cost  ',
   'Overview',

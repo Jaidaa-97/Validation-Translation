@@ -71,6 +71,17 @@
                   <strong>Spa Hours</strong> (or similar) compares the schedule paragraph (e.g. Weekdays, Fitness Center, Massage times in a <code>&lt;p&gt;</code>).
                 </li>
                 <li>
+                  <strong>Golf</strong> — Labels mentioning golf open
+                  <code>…/services-amenities/golf</code>. Each course is matched by <strong>name</strong> (e.g.
+                  <code>h3.golf-course-title</code>). Use “Golf #1 Name”, “Golf #1 Description”, or “Golf #1 Hours” for
+                  multi-course hotels. “Golf Lessons” / “Golf Lessons Note” (full tile
+                  <code>div</code>), “Dress Code” (tile
+                  <code>div</code>), and “Handicap Men” / “Handicap Women” (<code>p</code> lines) read pinned selectors under
+                  <code>#hotel-amenities</code>. Handicap rows pass when expected text appears inside the scraped line.
+                  Golf <strong>Hours of Operation</strong> use
+                  <code>#hotel-amenities … section.course-hours div.hours</code> on the overview; per-course hours use the golf subpage.
+                </li>
+                <li>
                   <strong>Hours of Operation (dining)</strong> — Compares <code>div.hours</code> on the dining page. Use
                   <strong>Restaurant #1 Hours…</strong> or the outlet name in column A when a hotel has several restaurants.
                 </li>
