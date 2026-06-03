@@ -52,69 +52,6 @@
             (e.g. ENG + GER + JAP). With exactly one language selected, the URL host updates to match
             (<code>www</code>, <code>de</code>, <code>jp</code>, …); path and query stay the same.
           </p>
-          <details class="help-details">
-            <summary>How column A labels are matched on the site (click to expand)</summary>
-            <div class="help-details-body">
-              <ul class="help-list">
-                <li>
-                  <strong>Hotel features</strong> — Rows named
-                  <strong>Health Features</strong>, <strong>General Features</strong>, or the split
-                  Recreation &amp; Health / General Features (Complimentary / Additional cost) cells are checked
-                  line-by-line against the overview <code>section.features</code> block (one amenity per line in Excel).
-                  When both Health Features and General Features have copy, each row is validated separately.
-                </li>
-                <li>
-                  <strong>Dining &amp; restaurants</strong> — Labels mentioning restaurant, dining, etc. open
-                  <code>…/services-amenities/dining</code>. Each outlet is matched by <strong>name</strong> and Excel
-                  copy (not by its position on the page), including hours and descriptions.
-                </li>
-                <li>
-                  <strong>Spa &amp; wellness</strong> — Labels like Spa, Wellness, or Spa Description open
-                  <code>…/services-amenities/spa</code>. “Spa Name” / “Spa Title” compare the title only; “Spa Description” uses the body text.
-                  <strong>Spa Hours</strong> (or similar) compares the schedule paragraph (e.g. Weekdays, Fitness Center, Massage times in a <code>&lt;p&gt;</code>).
-                </li>
-                <li>
-                  <strong>Golf</strong> — Labels mentioning golf open
-                  <code>…/services-amenities/golf</code>. Each course is matched by <strong>name</strong> (e.g.
-                  <code>h3.golf-course-title</code>). Use “Golf #1 Name”, “Golf #1 Description”, or “Golf #1 Hours” for
-                  multi-course hotels. “Golf Lessons” / “Golf Lessons Note” (full tile
-                  <code>div</code>), “Dress Code” (tile
-                  <code>div</code>), and “Handicap Men” / “Handicap Women” (<code>p</code> lines) read pinned selectors under
-                  <code>#hotel-amenities</code>. Handicap rows pass when expected text appears inside the scraped line.
-                  Golf <strong>Hours of Operation</strong> use
-                  <code>#hotel-amenities … section.course-hours div.hours</code> on the overview; per-course hours use the golf subpage.
-                </li>
-                <li>
-                  <strong>Hours of Operation (dining)</strong> — Compares <code>div.hours</code> on the dining page. Use
-                  <strong>Restaurant #1 Hours…</strong> or the outlet name in column A when a hotel has several restaurants.
-                  Each outlet is matched by <strong>name</strong>, description, or hours text — not by its position on the live page.
-                </li>
-                <li>
-                  <strong>Property Highlight</strong> — e.g. “Property Highlight #2 Description” matches the three overview highlight tiles.
-                </li>
-                <li>
-                  <strong>Property search</strong> — Searches LHW from your <code>/hotel/…</code> URL and reads
-                  <code>p.hotel-desc</code> on the results page.
-                </li>
-                <li>
-                  <strong>Column H (special note)</strong> — Text in column H compares that row against the property-overview block
-                  (not used for highlights or message-banner rows).
-                </li>
-                <li>
-                  <strong>Overview notices</strong> — Renovation Notice, Special Notice, Message banner, or Hotel message match the
-                  corresponding overview notice on the hotel page. Hotels with several blue info strips (e.g. Shilla Seoul) are read in
-                  order; use <strong>Special Notice #1</strong>, <strong>#2</strong>, … in column A, or rely on sheet order when labels have no number.
-                </li>
-              </ul>
-              <details class="help-details help-details-nested">
-                <summary>Troubleshooting (optional)</summary>
-                <p class="hint">
-                  If the site blocks the automated browser, restart the server in PowerShell with visible Chrome:
-                </p>
-                <pre class="help-code">$env:HEADLESS="false"; $env:PW_CHANNEL="chrome"; npm start</pre>
-              </details>
-            </div>
-          </details>
         </div>
 
         <div class="actions">
