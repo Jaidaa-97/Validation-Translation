@@ -55,11 +55,14 @@
           <details class="help-details">
             <summary>How column A labels are matched on the site (click to expand)</summary>
             <div class="help-details-body">
-              <p class="help-intro">
-                The tool reads column <strong>A</strong> (section name) and compares your Excel text
-                (columns B–G) to the matching block on the selected live LHW language page.
-              </p>
               <ul class="help-list">
+                <li>
+                  <strong>Hotel features</strong> — Rows named
+                  <strong>Health Features</strong>, <strong>General Features</strong>, or the split
+                  Recreation &amp; Health / General Features (Complimentary / Additional cost) cells are checked
+                  line-by-line against the overview <code>section.features</code> block (one amenity per line in Excel).
+                  When both Health Features and General Features have copy, each row is validated separately.
+                </li>
                 <li>
                   <strong>Dining &amp; restaurants</strong> — Labels mentioning restaurant, dining, etc. open
                   <code>…/services-amenities/dining</code>. Each outlet is matched by <strong>name</strong> and Excel
